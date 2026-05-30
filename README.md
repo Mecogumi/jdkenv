@@ -21,6 +21,49 @@ and you're done.
 
 ---
 
+## Manual install (no remote script)
+
+`irm | iex` runs a remote script without verifying it, just like `curl | bash`.  
+It's the standard Scoop/mise pattern, but it means trusting the source. If you'd  
+rather not pipe a script into your shell, install by hand — you download the  
+binary yourself and can inspect everything first.
+
+**Option A — download the binary from Releases**
+
+**1\. Find your architecture.**  
+`AMD64` → use the **x64** binary; `ARM64` → use the **arm64** binary.
+
+**2\. Download the binary.** Get `jdkenv-x64.exe` (or `jdkenv-arm64.exe`) from the  
+[latest release](https://github.com/Mecogumi/jdkenv/releases/latest). By default  
+ 
+
+**3\. Put it in place and run** `**setup**` **once.** The commands below move the binary  
+to `%USERPROFILE%\.jdkenv\bin\jdkenv.exe` and run `jdkenv setup`, which prepends  
+`…\.jdkenv\current\bin` and `…\.jdkenv\bin` to your **user** `PATH` and sets  
+`JAVA_HOME`. Run them in the folder where the download landed:
+
+```
+cd $env:USERPROFILE\Downloads                          # where the .exe landed
+$bin = "$env:USERPROFILE\.jdkenv\bin"
+New-Item -ItemType Directory -Force -Path $bin | Out-Null
+Move-Item -Force .\jdkenv-x64.exe "$bin\jdkenv.exe"    # use jdkenv-arm64.exe on ARM
+& "$bin\jdkenv.exe" setup
+```
+
+**4\. Open a NEW terminal.** `PATH` changes only take effect in terminals opened  
+afterwards, so close this one and open a fresh PowerShell. There `jdkenv` is on  
+your `PATH` — confirm it and install your first JDK:
+
+```
+jdkenv --version                          # confirms jdkenv is on your PATH
+jdkenv install 21 --distribution temurin  # download + activate Temurin 21
+```
+
+**Option B — build it yourself:** see [Build from source](#build-from-source).  
+ 
+
+---
+
 ## Commands
 
 | Command | What it does |

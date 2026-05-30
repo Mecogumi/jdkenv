@@ -62,7 +62,8 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ''
 Write-Host 'jdkenv installed successfully.' -ForegroundColor Green
 Write-Host 'Open a NEW terminal (so it picks up the PATH) and try:' -ForegroundColor Green
-Write-Host '    jdkenv install 21'
+Write-Host '    jdkenv install 21 --distribution corretto'
+Write-Host '    jdkenv list 21 --remote'
 Write-Host '    jdkenv current'
 Write-Host ''
 Write-Host 'If another java.exe from the system PATH wins, run:  jdkenv doctor'

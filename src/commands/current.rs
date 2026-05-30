@@ -17,7 +17,7 @@ pub fn run() -> Result<()> {
         }
         None => {
             println!("No active version.");
-            println!("Install one (jdkenv install <v>) or activate it (jdkenv global <v>).");
+            println!("Install one (jdkenv install <v> --distribution <dist>) or activate it (jdkenv global <v>).");
         }
     }
     Ok(())

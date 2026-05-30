@@ -29,7 +29,7 @@ pub fn run() -> Result<()> {
         }
         None => {
             println!("[!!] no active version (junction 'current' missing).");
-            println!("     Install one (jdkenv install <v>) or activate it (jdkenv global <v>).");
+            println!("     Install one (jdkenv install <v> --distribution <dist>) or activate it (jdkenv global <v>).");
             problems += 1;
         }
     }

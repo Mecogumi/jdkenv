@@ -71,7 +71,7 @@ fn apply(layout: &Layout, scope: Scope) -> Result<()> {
     } else {
         println!("\nEverything was already configured (no changes).");
     }
-    println!("Try:  jdkenv install 21");
+    println!("Try:  jdkenv install 21 --distribution temurin");
     Ok(())
 }
 

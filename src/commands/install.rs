@@ -1,4 +1,4 @@
-//! `jdkenv install <version> [--distribution <dist>]`
+//! `jdkenv install <version> --distribution <dist>`
 
 use anyhow::Result;
 
