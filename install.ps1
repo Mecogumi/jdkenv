@@ -1,6 +1,5 @@
 # jdkenv — one-command installer for Windows.
 #
-#   irm https://<MY_DOMAIN>/install.ps1 | iex
 #
 # Downloads the right binary from GitHub Releases, places it in
 # %USERPROFILE%\.jdkenv\bin\jdkenv.exe and delegates the PATH/JAVA_HOME registry

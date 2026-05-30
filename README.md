@@ -23,19 +23,13 @@ and you're done.
 
 ## Manual install (no remote script)
 
-`irm | iex` runs a remote script without verifying it, just like `curl | bash`.  
-It's the standard Scoop/mise pattern, but it means trusting the source. If you'd  
-rather not pipe a script into your shell, install by hand — you download the  
-binary yourself and can inspect everything first.
-
 **Option A — download the binary from Releases**
 
 **1\. Find your architecture.**  
 `AMD64` → use the **x64** binary; `ARM64` → use the **arm64** binary.
 
 **2\. Download the binary.** Get `jdkenv-x64.exe` (or `jdkenv-arm64.exe`) from the  
-[latest release](https://github.com/Mecogumi/jdkenv/releases/latest). By default  
- 
+[latest release](https://github.com/Mecogumi/jdkenv/releases/latest). By default  
 
 **3\. Put it in place and run** `**setup**` **once.** The commands below move the binary  
 to `%USERPROFILE%\.jdkenv\bin\jdkenv.exe` and run `jdkenv setup`, which prepends  
@@ -59,8 +53,7 @@ jdkenv --version                          # confirms jdkenv is on your PATH
 jdkenv install 21 --distribution temurin  # download + activate Temurin 21
 ```
 
-**Option B — build it yourself:** see [Build from source](#build-from-source).  
- 
+**Option B — build it yourself:** see [Build from source](#build-from-source).  
 
 ---
 
@@ -70,6 +63,7 @@ jdkenv install 21 --distribution temurin  # download + activate Temurin 21
 | --- | --- |
 | `jdkenv install <version> --distribution <dist>` | Downloads and installs a JDK (`.zip`) from foojay. `--distribution` is **required** (no default vendor). The first JDK you install is activated automatically. |
 | `jdkenv global <version> [--distribution <dist>]` | Activates an installed version (re-points the `current` junction). A bare major (e.g. `21`) works when unambiguous; if several installed JDKs share that major it errors and asks you to disambiguate by distribution or exact version. |
+| `jdkenv set <version> [--distribution <dist>]` | Switches the JDK for **this terminal only** (not persistent). Prints env assignments to evaluate in your shell: \`jdkenv set 21 |
 | `jdkenv list` | Lists installed versions (`*` = active). |
 | `jdkenv list --remote [<major>] [--distribution <dist>]` | Lists versions available on foojay, grouped by distribution (one header per vendor). Optional `<major>` (e.g. `21`) filters by major version across all vendors; `--distribution` restricts to a single vendor. |
 | `jdkenv uninstall <version>` | Deletes a version. Refuses if it's the active one. |
@@ -87,9 +81,27 @@ jdkenv install 17 --distribution corretto  # Corretto 17
 jdkenv list --remote                       # every distribution, grouped by vendor
 jdkenv list --remote 21                    # Java 21 across all vendors
 jdkenv list --remote --distribution zulu   # just Zulu
-jdkenv global 17                           # switch the active JDK
+jdkenv global 17                           # switch the active JDK (persistent)
+jdkenv set 21 | iex                        # use Java 21 in THIS terminal only
 jdkenv current                             # which one is active?
 jdkenv doctor                              # is anything winning over me on PATH?
+```
+
+### `set` vs `global` — session or persistent
+
+`jdkenv global` re-points the shared `current` junction: every terminal sees it  
+and it persists. `jdkenv set` affects only the terminal you run it in (it  
+prepends that version's `bin` to the session `PATH` and sets `JAVA_HOME`) and is  
+gone when you close it.
+
+A program can't change its parent shell's environment, so `set` prints the  
+assignments for you to evaluate — hence `jdkenv set 21 | iex` (use `--cmd` for  
+cmd.exe). To make a bare `jdkenv set 21` apply directly, add a wrapper to your  
+PowerShell profile:
+
+```
+function jset { (jdkenv set @args | Out-String) | Invoke-Expression }
+# then:  jset 21
 ```
 
 Versions accept prefixes: `21` resolves to the most recent build of that line  

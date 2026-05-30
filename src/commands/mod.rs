@@ -7,5 +7,6 @@ pub mod global;
 pub mod install;
 pub mod list;
 pub mod local;
+pub mod set;
 pub mod setup;
 pub mod uninstall;

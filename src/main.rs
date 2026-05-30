@@ -41,6 +41,17 @@ enum Command {
         #[arg(long)]
         distribution: Option<String>,
     },
+    /// Use a version in THIS terminal only — prints env to eval: `jdkenv set 21 | iex`.
+    Set {
+        /// Installed version to use for this session (same matching as `global`).
+        version: String,
+        /// Disambiguate when several installed JDKs share the major version.
+        #[arg(long)]
+        distribution: Option<String>,
+        /// Emit cmd.exe syntax instead of PowerShell.
+        #[arg(long)]
+        cmd: bool,
+    },
     /// List installed versions; with `--remote`, those available on foojay.
     List {
         /// With `--remote`: filter by major version across all distributions
@@ -98,6 +109,11 @@ fn run() -> Result<()> {
             version,
             distribution,
         } => commands::global::run(&version, distribution.as_deref()),
+        Command::Set {
+            version,
+            distribution,
+            cmd,
+        } => commands::set::run(&version, distribution.as_deref(), cmd),
         Command::List {
             version,
             remote,
