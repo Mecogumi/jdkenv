@@ -1,0 +1,6 @@
+# Artefactos de compilación de Rust
+/target
+
+# Backups y temporales de editores
+*.bak
+*~
