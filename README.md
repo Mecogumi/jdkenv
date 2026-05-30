@@ -214,7 +214,3 @@ src/
 ```
 
 ---
-
-## License
-
-Your choice (fill in before publishing).
