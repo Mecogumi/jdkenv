@@ -9,7 +9,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::env_win::{self, Scope};
-use crate::paths::Layout;
+use crate::paths::{self, Layout};
 
 pub fn run() -> Result<()> {
     let layout = Layout::resolve()?;
@@ -34,12 +34,14 @@ pub fn run() -> Result<()> {
         }
     }
 
-    // 2) PATH (usuario o sistema) contiene `current\bin`.
-    let want_bin = lower_path(&layout.current_bin());
+    // 2) PATH (usuario o sistema) contiene `current\bin`. Comparamos entrada por
+    //    entrada con same_path (no un .contains() sobre la cadena: daría falsos
+    //    positivos con prefijos como `...\bin` ⊂ `...\bin_extra`).
+    let current_bin = layout.current_bin();
     let user_path = env_win::read_path(Scope::User).ok().flatten().unwrap_or_default();
     let system_path = env_win::read_path(Scope::System).ok().flatten().unwrap_or_default();
-    let in_user = user_path.to_lowercase().contains(&want_bin);
-    let in_system = system_path.to_lowercase().contains(&want_bin);
+    let in_user = std::env::split_paths(&user_path).any(|dir| paths::same_path(&dir, &current_bin));
+    let in_system = std::env::split_paths(&system_path).any(|dir| paths::same_path(&dir, &current_bin));
     if in_user || in_system {
         let dónde = if in_system { "sistema" } else { "usuario" };
         println!("[ok] el PATH de {dónde} contiene current\\bin");

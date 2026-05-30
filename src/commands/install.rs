@@ -43,12 +43,15 @@ pub fn run(version: &str, distribution: &str) -> Result<()> {
 /// Si ni el PATH de usuario ni el de sistema contienen `current\bin`, sugiere
 /// ejecutar `setup` (caso típico tras la primera instalación).
 fn hint_setup_if_needed(layout: &Layout) {
-    let want = layout.current_bin().to_string_lossy().to_lowercase();
+    let current_bin = layout.current_bin();
+    // Separamos el PATH por ';' y comparamos cada entrada con same_path (en vez
+    // de un .contains() sobre la cadena, que daría falsos positivos con prefijos
+    // como `...\bin` ⊂ `...\bin_extra`).
     let configured = |scope| {
         env_win::read_path(scope)
             .ok()
             .flatten()
-            .map(|p| p.to_lowercase().contains(&want))
+            .map(|p| std::env::split_paths(&p).any(|dir| paths::same_path(&dir, &current_bin)))
             .unwrap_or(false)
     };
     if !configured(Scope::User) && !configured(Scope::System) {
