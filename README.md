@@ -12,7 +12,7 @@ Inspired by `pyenv`/`jenv`, written in Rust as a single dependency-free `.exe`
 ## One-command install
 
 ```powershell
-irm https://<MY_DOMAIN>/install.ps1 | iex
+irm https://raw.githubusercontent.com/Mecogumi/jdkenv/refs/heads/main/install.ps1 | iex
 ```
 
 This downloads the right binary (x64/arm64) to `%USERPROFILE%\.jdkenv\bin\` and

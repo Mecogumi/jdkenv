@@ -10,7 +10,7 @@
 $ErrorActionPreference = 'Stop'
 
 # ─── Placeholders: reemplázalos antes de hospedar ────────────────────────────
-$GitHubUser = '<USER>'        # tu usuario/organización de GitHub
+$GitHubUser = 'Mecogumi'        # tu usuario/organización de GitHub
 # ─────────────────────────────────────────────────────────────────────────────
 
 function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
