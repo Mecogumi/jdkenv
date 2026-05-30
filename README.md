@@ -23,11 +23,6 @@ and you're done.
 
 ## Manual install (no remote script)
 
-`irm | iex` runs a remote script without verifying it, just like `curl | bash`.  
-It's the standard Scoop/mise pattern, but it means trusting the source. If you'd  
-rather not pipe a script into your shell, install by hand — you download the  
-binary yourself and can inspect everything first.
-
 **Option A — download the binary from Releases**
 
 **1\. Find your architecture.**  
