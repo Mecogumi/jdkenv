@@ -1,0 +1,78 @@
+name: release
+
+# Builds the Windows x64 and ARM64 binaries and publishes them to a GitHub
+# Release. The ARM64 binary is cross-compiled on the x64 `windows-latest` runner
+# — that image ships LLVM/clang (needed by `ring`) and the MSVC ARM64 build
+# tools, so no ARM hardware is required.
+#
+# Trigger a release by pushing a tag:   git tag v0.1.0 && git push origin v0.1.0
+# Or run it manually from the Actions tab (build-only, no Release published).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the Release and upload assets
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            asset: jdkenv-x64.exe
+          - target: aarch64-pc-windows-msvc
+            asset: jdkenv-arm64.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Stage binary
+        shell: pwsh
+        run: Copy-Item "target/${{ matrix.target }}/release/jdkenv.exe" "${{ matrix.asset }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    # Only publish a Release when triggered by a tag push.
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/jdkenv-x64.exe
+            dist/jdkenv-arm64.exe
+          fail_on_unmatched_files: true
+          generate_release_notes: true
