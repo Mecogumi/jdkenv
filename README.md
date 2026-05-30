@@ -1,7 +1,7 @@
 # jdkenv
 
 A **JDK version manager for Windows**, native (PowerShell/cmd — no WSL, no Git  
-Bash). It downloads JDKs from the [foojay Disco API](https://api.foojay.io/) and  
+Bash). It downloads JDKs from the [foojay Disco API](https://api.foojay.io/swagger-ui/) and  
 switches the active version instantly, without restarting your terminal.
 
 Inspired by `pyenv`/`jenv`, written in Rust as a single dependency-free `.exe`  
