@@ -12,7 +12,7 @@ dependencias externas (TLS vía rustls, no requiere OpenSSL).
 ## Instalación de un comando
 
 ```powershell
-irm https://<MI_DOMINIO>/install.ps1 | iex
+irm https://raw.githubusercontent.com/Mecogumi/jdkenv/refs/heads/main/install.ps1 | iex
 ```
 
 Esto descarga el binario adecuado (x64/arm64) a `%USERPROFILE%\.jdkenv\bin\` y
