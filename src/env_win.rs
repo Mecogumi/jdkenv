@@ -1,15 +1,15 @@
-//! Entorno en Windows: PATH/JAVA_HOME en el registro, broadcast de cambios y
-//! relanzado elevado.
+//! Environment on Windows: PATH/JAVA_HOME in the registry, change broadcasting and
+//! elevated relaunch.
 //!
-//! Editamos el registro directamente — NO usamos `setx`, que trunca el PATH a
-//! 1024 caracteres. Al reescribir `Path` PRESERVAMOS su tipo (`REG_EXPAND_SZ`):
-//! degradarlo a `REG_SZ` dejaría de expandir referencias como `%SystemRoot%` ya
-//! presentes y rompería el PATH del usuario.
+//! We edit the registry directly — we do NOT use `setx`, which truncates the PATH to
+//! 1024 characters. When rewriting `Path` we PRESERVE its type (`REG_EXPAND_SZ`):
+//! downgrading it to `REG_SZ` would stop expanding references like `%SystemRoot%`
+//! already present and would break the user's PATH.
 //!
-//! Recordatorio de prioridad del PATH efectivo: SISTEMA primero, USUARIO
-//! después. Por eso anteponer en el PATH de usuario NO vence a un JDK que esté
-//! en el PATH de sistema (caso típico: el `javapath` de Oracle); para eso está
-//! `setup --system`, que edita `HKLM` (requiere elevación).
+//! Reminder about effective PATH priority: SYSTEM first, USER
+//! after. That is why prepending to the user PATH does NOT beat a JDK that is
+//! in the system PATH (typical case: Oracle's `javapath`); for that there is
+//! `setup --system`, which edits `HKLM` (requires elevation).
 
 use std::borrow::Cow;
 use std::ffi::OsStr;
@@ -35,17 +35,17 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, SW_SHOWNORMAL, WM_SETTINGCHANGE,
 };
 
-/// Subclave de entorno del usuario (`HKCU\Environment`).
+/// User environment subkey (`HKCU\Environment`).
 const USER_ENV: &str = "Environment";
-/// Subclave de entorno del sistema (`HKLM\...\Session Manager\Environment`).
+/// System environment subkey (`HKLM\...\Session Manager\Environment`).
 const SYSTEM_ENV: &str = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment";
 
-/// Ámbito donde se aplican los cambios de entorno.
+/// Scope where the environment changes are applied.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
-    /// `HKCU\Environment` — sin UAC, cubre la mayoría de los casos.
+    /// `HKCU\Environment` — no UAC, covers most cases.
     User,
-    /// `HKLM\...\Environment` — requiere elevación, gana al PATH de usuario.
+    /// `HKLM\...\Environment` — requires elevation, beats the user PATH.
     System,
 }
 
@@ -61,12 +61,12 @@ impl Scope {
         let (root, sub) = self.root_and_sub();
         RegKey::predef(root)
             .open_subkey_with_flags(sub, perms)
-            .with_context(|| format!("no se pudo abrir la clave de entorno '{sub}'"))
+            .with_context(|| format!("could not open the environment key '{sub}'"))
     }
 }
 
-/// Codifica una cadena a UTF-16LE con terminador nulo (formato de un valor
-/// `REG_SZ`/`REG_EXPAND_SZ`).
+/// Encodes a string to UTF-16LE with a null terminator (format of a
+/// `REG_SZ`/`REG_EXPAND_SZ` value).
 fn encode_wide_bytes(s: &str) -> Vec<u8> {
     s.encode_utf16()
         .chain(once(0))
@@ -74,51 +74,51 @@ fn encode_wide_bytes(s: &str) -> Vec<u8> {
         .collect()
 }
 
-/// Lee un valor de cadena del registro como `(texto, tipo)`, o `None` si no existe.
+/// Reads a string value from the registry as `(text, type)`, or `None` if it does not exist.
 fn read_value(key: &RegKey, name: &str) -> Result<Option<(String, RegType)>> {
     match key.get_raw_value(name) {
         Ok(raw) => {
             let text = String::from_reg_value(&raw)
-                .with_context(|| format!("el valor de registro '{name}' no es texto"))?;
+                .with_context(|| format!("the registry value '{name}' is not text"))?;
             Ok(Some((text, raw.vtype)))
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e).with_context(|| format!("leyendo '{name}' del registro")),
+        Err(e) => Err(e).with_context(|| format!("reading '{name}' from the registry")),
     }
 }
 
-/// Escribe un valor de cadena preservando el `vtype` indicado.
+/// Writes a string value preserving the given `vtype`.
 fn write_value(key: &RegKey, name: &str, value: &str, vtype: RegType) -> Result<()> {
     let raw = RegValue {
         bytes: Cow::Owned(encode_wide_bytes(value)),
         vtype,
     };
     key.set_raw_value(name, &raw)
-        .with_context(|| format!("escribiendo '{name}' en el registro"))
+        .with_context(|| format!("writing '{name}' to the registry"))
 }
 
-/// Normaliza una ruta de PATH para comparar sin distinguir mayúsculas ni barra
-/// final (semántica de rutas en Windows).
+/// Normalizes a PATH entry for comparison ignoring case and trailing
+/// backslash (Windows path semantics).
 fn normalize(p: &str) -> String {
     p.trim().trim_end_matches('\\').to_lowercase()
 }
 
-/// Antepone `entries` (en orden) al PATH del `scope`, sin duplicar y sin tocar
-/// el resto. Devuelve `true` si hubo cambios. Idempotente: si las entradas ya
-/// están al frente, no reescribe nada.
+/// Prepends `entries` (in order) to the `scope` PATH, without duplicating and without touching
+/// the rest. Returns `true` if there were changes. Idempotent: if the entries are
+/// already at the front, it does not rewrite anything.
 pub fn prepend_path(scope: Scope, entries: &[&str]) -> Result<bool> {
     let key = scope.open(KEY_READ | KEY_SET_VALUE)?;
     let (current, vtype) = match read_value(&key, "Path")? {
         Some(v) => v,
-        // PATH inexistente (cuenta nueva): lo creamos como REG_EXPAND_SZ, el tipo
-        // canónico para PATH en Windows.
+        // Nonexistent PATH (new account): we create it as REG_EXPAND_SZ, the
+        // canonical type for PATH on Windows.
         None => (String::new(), REG_EXPAND_SZ),
     };
 
     let prepend_norm: Vec<String> = entries.iter().map(|e| normalize(e)).collect();
     let mut new_parts: Vec<String> = entries.iter().map(|e| (*e).to_string()).collect();
-    // Conserva el resto del PATH, quitando las entradas que acabamos de anteponer
-    // (evita duplicados y las "promociona" al frente si ya estaban más atrás).
+    // Keep the rest of the PATH, removing the entries we just prepended
+    // (avoids duplicates and "promotes" them to the front if they were already further back).
     for part in current.split(';') {
         if part.is_empty() {
             continue;
@@ -136,7 +136,7 @@ pub fn prepend_path(scope: Scope, entries: &[&str]) -> Result<bool> {
     Ok(true)
 }
 
-/// Establece (o corrige) `JAVA_HOME` en el `scope`. Devuelve `true` si cambió.
+/// Sets (or corrects) `JAVA_HOME` in the `scope`. Returns `true` if it changed.
 pub fn set_java_home(scope: Scope, value: &str) -> Result<bool> {
     let key = scope.open(KEY_READ | KEY_SET_VALUE)?;
     if let Some((current, _)) = read_value(&key, "JAVA_HOME")?
@@ -144,24 +144,24 @@ pub fn set_java_home(scope: Scope, value: &str) -> Result<bool> {
     {
         return Ok(false);
     }
-    // JAVA_HOME es una ruta absoluta sin variables → REG_SZ.
+    // JAVA_HOME is an absolute path without variables → REG_SZ.
     write_value(&key, "JAVA_HOME", value, REG_SZ)?;
     Ok(true)
 }
 
-/// Resultado de intentar deshacer `JAVA_HOME` (lo usa `setup --undo`).
+/// Result of attempting to undo `JAVA_HOME` (used by `setup --undo`).
 pub enum JavaHomeUndo {
-    /// Apuntaba a jdkenv y se eliminó.
+    /// Pointed to jdkenv and was removed.
     Removed,
-    /// No estaba definido.
+    /// Was not defined.
     NotSet,
-    /// Apunta a otra cosa (no de jdkenv): lo dejamos intacto.
+    /// Points to something else (not jdkenv's): we leave it intact.
     KeptForeign(String),
 }
 
-/// Quita del PATH del `scope` las `entries` indicadas (comparación normalizada),
-/// dejando el resto intacto y preservando el vtype. Devuelve `true` si quitó
-/// algo. Es la operación inversa de [`prepend_path`].
+/// Removes the given `entries` from the `scope` PATH (normalized comparison),
+/// leaving the rest intact and preserving the vtype. Returns `true` if it removed
+/// something. It is the inverse operation of [`prepend_path`].
 pub fn remove_from_path(scope: Scope, entries: &[&str]) -> Result<bool> {
     let key = scope.open(KEY_READ | KEY_SET_VALUE)?;
     let Some((current, vtype)) = read_value(&key, "Path")? else {
@@ -173,8 +173,8 @@ pub fn remove_from_path(scope: Scope, entries: &[&str]) -> Result<bool> {
     let kept: Vec<&str> = current
         .split(';')
         .filter(|part| {
-            // Descarta solo las entradas de jdkenv; todo lo demás (incluidas
-            // entradas vacías) se conserva verbatim para no alterar de más.
+            // Discard only jdkenv's entries; everything else (including
+            // empty entries) is kept verbatim to avoid altering more than needed.
             if !part.is_empty() && remove_norm.contains(&normalize(part)) {
                 removed_any = true;
                 false
@@ -191,47 +191,47 @@ pub fn remove_from_path(scope: Scope, entries: &[&str]) -> Result<bool> {
     Ok(true)
 }
 
-/// Si `JAVA_HOME` apunta a `expected` (el `current` de jdkenv), lo elimina. Si
-/// apunta a otra cosa, lo deja intacto: no pisamos un `JAVA_HOME` ajeno que el
-/// usuario pudiera tener de antes.
+/// If `JAVA_HOME` points to `expected` (jdkenv's `current`), it removes it. If
+/// it points to something else, it leaves it intact: we do not overwrite a foreign `JAVA_HOME`
+/// that the user might have had before.
 pub fn clear_java_home_if(scope: Scope, expected: &str) -> Result<JavaHomeUndo> {
     let key = scope.open(KEY_READ | KEY_SET_VALUE)?;
     match read_value(&key, "JAVA_HOME")? {
         None => Ok(JavaHomeUndo::NotSet),
         Some((current, _)) if normalize(&current) == normalize(expected) => {
             key.delete_value("JAVA_HOME")
-                .context("no se pudo eliminar JAVA_HOME del registro")?;
+                .context("could not remove JAVA_HOME from the registry")?;
             Ok(JavaHomeUndo::Removed)
         }
         Some((current, _)) => Ok(JavaHomeUndo::KeptForeign(current)),
     }
 }
 
-/// Lee el PATH del `scope` sin expandir variables. `None` si no existe.
+/// Reads the `scope` PATH without expanding variables. `None` if it does not exist.
 pub fn read_path(scope: Scope) -> Result<Option<String>> {
     Ok(read_value(&scope.open(KEY_READ)?, "Path")?.map(|(s, _)| s))
 }
 
-/// Lee `JAVA_HOME` del `scope`. `None` si no existe.
+/// Reads `JAVA_HOME` from the `scope`. `None` if it does not exist.
 pub fn read_java_home(scope: Scope) -> Result<Option<String>> {
     Ok(read_value(&scope.open(KEY_READ)?, "JAVA_HOME")?.map(|(s, _)| s))
 }
 
-/// Notifica a las ventanas de nivel superior que el entorno cambió, para que las
-/// shells nuevas tomen el PATH/JAVA_HOME sin cerrar sesión. `lParam = "Environment"`
-/// le indica al receptor qué sección releer.
+/// Notifies top-level windows that the environment changed, so that new
+/// shells pick up the PATH/JAVA_HOME without logging out. `lParam = "Environment"`
+/// tells the receiver which section to re-read.
 pub fn broadcast_env_change() {
     let section: Vec<u16> = OsStr::new("Environment")
         .encode_wide()
         .chain(once(0))
         .collect();
     let mut result: usize = 0;
-    // SMTO_ABORTIFHUNG + timeout corto: no nos bloqueamos si alguna ventana cuelga.
+    // SMTO_ABORTIFHUNG + short timeout: we do not block if some window hangs.
     unsafe {
         SendMessageTimeoutW(
             HWND_BROADCAST,
             WM_SETTINGCHANGE,
-            0, // wParam sin uso para WM_SETTINGCHANGE
+            0, // wParam unused for WM_SETTINGCHANGE
             section.as_ptr() as LPARAM,
             SMTO_ABORTIFHUNG,
             5000,
@@ -240,7 +240,7 @@ pub fn broadcast_env_change() {
     }
 }
 
-/// ¿El proceso corre con privilegios de administrador (token elevado)?
+/// Does the process run with administrator privileges (elevated token)?
 pub fn is_elevated() -> bool {
     unsafe {
         let mut token: HANDLE = std::ptr::null_mut();
@@ -261,12 +261,12 @@ pub fn is_elevated() -> bool {
     }
 }
 
-/// Codifica un `OsStr` a una cadena ancha terminada en nulo (para Win32 `*W`).
+/// Encodes an `OsStr` to a null-terminated wide string (for Win32 `*W`).
 fn wide(s: &OsStr) -> Vec<u16> {
     s.encode_wide().chain(once(0)).collect()
 }
 
-/// Cita un argumento si contiene espacios, para pasarlo por la línea de comandos.
+/// Quotes an argument if it contains spaces, to pass it through the command line.
 fn quote_arg(a: &str) -> String {
     if a.is_empty() || a.contains([' ', '\t', '"']) {
         format!("\"{}\"", a.replace('"', "\\\""))
@@ -275,11 +275,11 @@ fn quote_arg(a: &str) -> String {
     }
 }
 
-/// Relanza este mismo ejecutable con elevación (UAC) y los `args` dados, espera
-/// a que termine y devuelve su código de salida. Lo usa `setup --system` cuando
-/// no se está corriendo como administrador.
+/// Relaunches this same executable with elevation (UAC) and the given `args`, waits
+/// for it to finish and returns its exit code. Used by `setup --system` when
+/// not running as administrator.
 pub fn relaunch_elevated(args: &[String]) -> Result<i32> {
-    let exe = std::env::current_exe().context("no se pudo obtener la ruta del ejecutable")?;
+    let exe = std::env::current_exe().context("could not get the executable path")?;
     let exe_w = wide(exe.as_os_str());
     let verb_w = wide(OsStr::new("runas"));
     let params = args
@@ -289,10 +289,10 @@ pub fn relaunch_elevated(args: &[String]) -> Result<i32> {
         .join(" ");
     let params_w = wide(OsStr::new(&params));
 
-    // SAFETY: zeroed() deja punteros nulos válidos en los campos que no usamos.
+    // SAFETY: zeroed() leaves valid null pointers in the fields we do not use.
     let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
     info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
-    info.fMask = SEE_MASK_NOCLOSEPROCESS; // queremos el handle del proceso para esperar
+    info.fMask = SEE_MASK_NOCLOSEPROCESS; // we want the process handle to wait on
     info.lpVerb = verb_w.as_ptr();
     info.lpFile = exe_w.as_ptr();
     info.lpParameters = params_w.as_ptr();
@@ -301,33 +301,33 @@ pub fn relaunch_elevated(args: &[String]) -> Result<i32> {
     let ok = unsafe { ShellExecuteExW(&mut info) };
     if ok == 0 {
         let err = unsafe { GetLastError() };
-        // 1223 = ERROR_CANCELLED: el usuario rechazó el prompt de UAC.
+        // 1223 = ERROR_CANCELLED: the user rejected the UAC prompt.
         if err == 1223 {
-            bail!("se canceló la elevación (UAC). `setup --system` necesita permisos de administrador.");
+            bail!("elevation was cancelled (UAC). `setup --system` requires administrator permissions.");
         }
-        bail!("no se pudo relanzar con elevación (código de error {err}).");
+        bail!("could not relaunch with elevation (error code {err}).");
     }
 
     let handle = info.hProcess;
     if handle.is_null() {
-        // Sin handle (pese a SEE_MASK_NOCLOSEPROCESS) no podemos confirmar que el
-        // proceso elevado terminó bien; no fingimos éxito silencioso.
-        bail!("no se obtuvo el handle del proceso elevado; no se pudo confirmar `setup --system`.");
+        // Without a handle (despite SEE_MASK_NOCLOSEPROCESS) we cannot confirm that the
+        // elevated process finished correctly; we do not fake silent success.
+        bail!("did not obtain the handle of the elevated process; could not confirm `setup --system`.");
     }
     let code = unsafe {
-        // INFINITE no debería expirar, pero validamos el retorno: un WAIT_FAILED
-        // dejaría el handle en estado inválido y GetExitCodeProcess daría basura.
+        // INFINITE should not expire, but we validate the return: a WAIT_FAILED
+        // would leave the handle in an invalid state and GetExitCodeProcess would return garbage.
         let wait = WaitForSingleObject(handle, INFINITE);
         if wait != WAIT_OBJECT_0 {
             CloseHandle(handle);
-            bail!("fallo esperando al proceso elevado (WaitForSingleObject devolvió {wait}).");
+            bail!("failed waiting for the elevated process (WaitForSingleObject returned {wait}).");
         }
         let mut code: u32 = 0;
         let got = GetExitCodeProcess(handle, &mut code);
         if got == 0 {
             let err = GetLastError();
             CloseHandle(handle);
-            bail!("no se pudo obtener el código de salida del proceso elevado (error {err}).");
+            bail!("could not get the exit code of the elevated process (error {err}).");
         }
         CloseHandle(handle);
         code as i32

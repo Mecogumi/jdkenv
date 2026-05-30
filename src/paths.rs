@@ -1,16 +1,16 @@
-//! Layout del árbol `%USERPROFILE%\.jdkenv\` y gestión del junction `current`.
+//! Layout of the `%USERPROFILE%\.jdkenv\` tree and management of the `current` junction.
 //!
-//! El junction `current` es la pieza central del diseño: PATH y JAVA_HOME
-//! apuntan SIEMPRE a `current` (nunca a una versión concreta), así que cambiar
-//! de JDK es solo re-apuntar el junction, sin tocar el registro ni rehacer el
-//! broadcast. Las shells ya abiertas toman la versión nueva al siguiente `java`.
+//! The `current` junction is the centerpiece of the design: PATH and JAVA_HOME
+//! ALWAYS point to `current` (never to a specific version), so switching
+//! JDKs is just re-pointing the junction, without touching the registry or redoing the
+//! broadcast. Shells already open pick up the new version at the next `java`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
 
-/// Rutas canónicas del árbol `.jdkenv`.
+/// Canonical paths of the `.jdkenv` tree.
 pub struct Layout {
     pub root: PathBuf,
     pub bin: PathBuf,
@@ -19,11 +19,11 @@ pub struct Layout {
 }
 
 impl Layout {
-    /// Calcula el layout a partir de `%USERPROFILE%`.
+    /// Computes the layout from `%USERPROFILE%`.
     pub fn resolve() -> Result<Self> {
-        // USERPROFILE siempre está definido en una sesión interactiva de usuario.
+        // USERPROFILE is always defined in an interactive user session.
         let profile = std::env::var_os("USERPROFILE")
-            .ok_or_else(|| anyhow!("la variable de entorno USERPROFILE no está definida"))?;
+            .ok_or_else(|| anyhow!("the USERPROFILE environment variable is not defined"))?;
         let root = PathBuf::from(profile).join(".jdkenv");
         Ok(Layout {
             bin: root.join("bin"),
@@ -33,28 +33,28 @@ impl Layout {
         })
     }
 
-    /// Crea `bin\` y `versions\` (y `root` por extensión). No toca `current`.
+    /// Creates `bin\` and `versions\` (and `root` by extension). Does not touch `current`.
     pub fn ensure_dirs(&self) -> Result<()> {
         fs::create_dir_all(&self.bin)
-            .with_context(|| format!("no se pudo crear {}", self.bin.display()))?;
+            .with_context(|| format!("could not create {}", self.bin.display()))?;
         fs::create_dir_all(&self.versions)
-            .with_context(|| format!("no se pudo crear {}", self.versions.display()))?;
+            .with_context(|| format!("could not create {}", self.versions.display()))?;
         Ok(())
     }
 
-    /// Ruta `current\bin`, que es lo que se antepone al PATH.
+    /// `current\bin` path, which is what gets prepended to PATH.
     pub fn current_bin(&self) -> PathBuf {
         self.current.join("bin")
     }
 
-    /// Lista los JDKs instalados bajo `versions\`, ordenados por versión.
+    /// Lists the JDKs installed under `versions\`, sorted by version.
     pub fn installed(&self) -> Result<Vec<InstalledJdk>> {
         let mut out = Vec::new();
         if !self.versions.exists() {
             return Ok(out);
         }
         for entry in fs::read_dir(&self.versions)
-            .with_context(|| format!("no se pudo leer {}", self.versions.display()))?
+            .with_context(|| format!("could not read {}", self.versions.display()))?
         {
             let entry = entry?;
             if entry.file_type()?.is_dir()
@@ -71,9 +71,9 @@ impl Layout {
         Ok(out)
     }
 
-    /// Busca un JDK instalado que coincida con `query` (p.ej. `21`, `21.0.5` o
-    /// el nombre de carpeta completo `temurin-21.0.5`), filtrando opcionalmente
-    /// por distribución. Si varias coinciden, devuelve la versión más alta.
+    /// Searches for an installed JDK matching `query` (e.g. `21`, `21.0.5` or
+    /// the full folder name `temurin-21.0.5`), optionally filtering
+    /// by distribution. If several match, returns the highest version.
     pub fn find_installed(
         &self,
         query: &str,
@@ -88,18 +88,18 @@ impl Layout {
         Ok(best)
     }
 
-    /// Re-apunta el junction `current` → `target`.
+    /// Re-points the `current` junction → `target`.
     ///
-    /// `junction::delete` borra SOLO el reparse point, no el target (por eso
-    /// cambiar de versión nunca borra JDKs). Como el PATH guarda la ruta literal
-    /// `...\current\bin`, re-apuntar basta para que todo el sistema vea la
-    /// versión nueva sin reiniciar terminales ni rehacer el broadcast.
+    /// `junction::delete` removes ONLY the reparse point, not the target (that's why
+    /// switching versions never deletes JDKs). Since PATH stores the literal path
+    /// `...\current\bin`, re-pointing is enough for the whole system to see the
+    /// new version without restarting terminals or redoing the broadcast.
     pub fn repoint_current(&self, target: &Path) -> Result<()> {
         if !target.is_dir() {
-            bail!("el destino del junction no existe: {}", target.display());
+            bail!("the junction target does not exist: {}", target.display());
         }
-        // delete() es no-op si no existe. Si `current` quedó como carpeta/archivo
-        // real (estado corrupto), lo retiramos para poder recrear el junction.
+        // delete() is a no-op if it doesn't exist. If `current` ended up as a real
+        // folder/file (corrupt state), we remove it to be able to recreate the junction.
         let _ = junction::delete(&self.current);
         if self.current.exists() {
             if self.current.is_dir() {
@@ -110,14 +110,14 @@ impl Layout {
         }
         junction::create(target, &self.current).with_context(|| {
             format!(
-                "no se pudo crear el junction {} → {}",
+                "could not create the junction {} → {}",
                 self.current.display(),
                 target.display()
             )
         })
     }
 
-    /// Devuelve el target actual del junction `current`, si lo hay.
+    /// Returns the current target of the `current` junction, if any.
     pub fn current_target(&self) -> Option<PathBuf> {
         if junction::exists(&self.current).unwrap_or(false) {
             junction::get_target(&self.current).ok()
@@ -127,10 +127,10 @@ impl Layout {
     }
 }
 
-/// Un JDK instalado: una carpeta `<dist>-<version>` bajo `versions\`.
+/// An installed JDK: a `<dist>-<version>` folder under `versions\`.
 #[derive(Debug, Clone)]
 pub struct InstalledJdk {
-    /// Nombre de carpeta completo, p.ej. `temurin-21.0.5`.
+    /// Full folder name, e.g. `temurin-21.0.5`.
     pub dir_name: String,
     pub distribution: String,
     pub version: String,
@@ -138,10 +138,10 @@ pub struct InstalledJdk {
 }
 
 impl InstalledJdk {
-    /// Parsea `temurin-21.0.5` → (`temurin`, `21.0.5`). foojay nombra las
-    /// distribuciones con guion BAJO (p.ej. `oracle_open_jdk`, `sap_machine`),
-    /// nunca con guion, así que el primer `-` separa siempre distribución de
-    /// versión. Ignora carpetas de staging/descarga (empiezan por `.`).
+    /// Parses `temurin-21.0.5` → (`temurin`, `21.0.5`). foojay names
+    /// distributions with UNDERSCORES (e.g. `oracle_open_jdk`, `sap_machine`),
+    /// never with a hyphen, so the first `-` always separates distribution from
+    /// version. Ignores staging/download folders (they start with `.`).
     fn from_dir(path: PathBuf) -> Option<Self> {
         let dir_name = path.file_name()?.to_str()?.to_string();
         if dir_name.starts_with('.') {
@@ -159,16 +159,16 @@ impl InstalledJdk {
         })
     }
 
-    /// Clave numérica para ordenar/comparar versiones (21.0.5 > 21.0.4 > 17.x).
+    /// Numeric key for sorting/comparing versions (21.0.5 > 21.0.4 > 17.x).
     fn version_key(&self) -> Vec<u64> {
         version_key(&self.version)
     }
 }
 
-/// Compara dos rutas de forma robusta en Windows: canonicaliza (resolviendo el
-/// prefijo `\\?\` que añade `canonicalize`) y compara sin distinguir mayúsculas.
-/// Imprescindible para comparar el target del junction (que suele venir como
-/// ruta verbatim) contra una carpeta de `versions\`.
+/// Compares two paths robustly on Windows: canonicalizes (resolving the
+/// `\\?\` prefix that `canonicalize` adds) and compares case-insensitively.
+/// Essential for comparing the junction target (which usually comes as a
+/// verbatim path) against a `versions\` folder.
 pub fn same_path(a: &Path, b: &Path) -> bool {
     let norm = |p: &Path| {
         fs::canonicalize(p)
@@ -181,9 +181,9 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
     norm(a) == norm(b)
 }
 
-/// Extrae los componentes numéricos de una versión para compararla. El `+`
-/// separa la build-metadata (en semver NO afecta la precedencia: 21.0.11+10 ==
-/// 21.0.11+11), así que la descartamos antes de comparar.
+/// Extracts the numeric components of a version to compare it. The `+`
+/// separates the build metadata (in semver it does NOT affect precedence: 21.0.11+10 ==
+/// 21.0.11+11), so we discard it before comparing.
 fn version_key(v: &str) -> Vec<u64> {
     v.split('+')
         .next()
@@ -193,9 +193,9 @@ fn version_key(v: &str) -> Vec<u64> {
         .collect()
 }
 
-/// ¿`query` identifica a este JDK? Acepta el nombre de carpeta completo o la
-/// versión, ya sea exactos o como prefijo por componentes (`21` ⊑ `21.0.5`,
-/// pero `2` NO matchea `21`).
+/// Does `query` identify this JDK? Accepts the full folder name or the
+/// version, either exact or as a component-wise prefix (`21` ⊑ `21.0.5`,
+/// but `2` does NOT match `21`).
 fn version_matches(dir_name: &str, version: &str, query: &str) -> bool {
     matches_componentwise(dir_name, query) || matches_componentwise(version, query)
 }
@@ -204,8 +204,8 @@ fn matches_componentwise(full: &str, query: &str) -> bool {
     if full == query {
         return true;
     }
-    // '.' separa componentes; el query es prefijo si cada componente suyo iguala
-    // el correspondiente de `full`. Comparar componentes evita `2` ⊑ `21`.
+    // '.' separates components; the query is a prefix if each of its components equals
+    // the corresponding one in `full`. Comparing components avoids `2` ⊑ `21`.
     let q: Vec<&str> = query.split('.').collect();
     let f: Vec<&str> = full.split('.').collect();
     q.len() <= f.len() && q.iter().zip(&f).all(|(a, b)| a == b)

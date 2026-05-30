@@ -3,9 +3,9 @@
 use anyhow::Result;
 
 pub fn run(_version: &str) -> Result<()> {
-    // TODO v2: requiere shims (estilo pyenv) o un hook de shell (estilo jenv)
-    // para resolver un archivo `.jdkenv-version` por carpeta. Fuera de alcance v1.
-    println!("`jdkenv local` no está implementado todavía (previsto para v2).");
-    println!("Por ahora usa `jdkenv global <version>` para cambiar la versión activa.");
+    // TODO v2: requires shims (pyenv style) or a shell hook (jenv style)
+    // to resolve a per-folder `.jdkenv-version` file. Out of scope for v1.
+    println!("`jdkenv local` is not implemented yet (planned for v2).");
+    println!("For now use `jdkenv global <version>` to change the active version.");
     Ok(())
 }

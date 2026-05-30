@@ -1,4 +1,4 @@
-//! `jdkenv current` (alias `which`) — muestra la versión activa.
+//! `jdkenv current` (alias `which`) — shows the active version.
 
 use anyhow::Result;
 
@@ -12,12 +12,12 @@ pub fn run() -> Result<()> {
             println!("{name}");
             println!("  current → {}", target.display());
             if !target.is_dir() {
-                println!("  (¡atención! el destino no existe — ejecuta `jdkenv global <v>`)");
+                println!("  (warning! the target does not exist — run `jdkenv global <v>`)");
             }
         }
         None => {
-            println!("No hay versión activa.");
-            println!("Instala una (jdkenv install <v>) o actívala (jdkenv global <v>).");
+            println!("No active version.");
+            println!("Install one (jdkenv install <v>) or activate it (jdkenv global <v>).");
         }
     }
     Ok(())

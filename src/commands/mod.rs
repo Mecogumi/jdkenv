@@ -1,5 +1,5 @@
-//! Implementación de cada subcomando del CLI. `main.rs` parsea con clap y
-//! despacha aquí.
+//! Implementation of each CLI subcommand. `main.rs` parses with clap and
+//! dispatches here.
 
 pub mod current;
 pub mod doctor;

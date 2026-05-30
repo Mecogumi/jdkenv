@@ -31,10 +31,10 @@ and you're done.
 
 | Command | What it does |
 |---|---|
-| `jdkenv install <version> [--distribution <dist>]` | Downloads and installs a JDK (`.zip`) from foojay. `--distribution` defaults to `temurin`. The first JDK you install is activated automatically. |
+| `jdkenv install <version> --distribution <dist>` | Downloads and installs a JDK (`.zip`) from foojay. `--distribution` is **required** (no default vendor). The first JDK you install is activated automatically. |
 | `jdkenv global <version>` | Activates an installed version (re-points the `current` junction). |
 | `jdkenv list` | Lists installed versions (`*` = active). |
-| `jdkenv list --remote [--distribution <dist>]` | Lists versions available on foojay for Windows + your architecture. |
+| `jdkenv list --remote [<major>] [--distribution <dist>]` | Lists versions available on foojay, grouped by distribution (one header per vendor). Optional `<major>` (e.g. `21`) filters by major version across all vendors; `--distribution` restricts to a single vendor. |
 | `jdkenv uninstall <version>` | Deletes a version. Refuses if it's the active one. |
 | `jdkenv current` (alias `which`) | Shows the active version and where `current` points. |
 | `jdkenv setup [--system]` | Registers `PATH`/`JAVA_HOME`. Without a flag: user PATH. `--system`: system PATH (prompts for elevation). |
@@ -45,12 +45,14 @@ and you're done.
 ### Examples
 
 ```powershell
-jdkenv install 21                          # Temurin 21 (latest build)
+jdkenv install 21 --distribution temurin   # Temurin 21 (latest build)
 jdkenv install 17 --distribution corretto  # Corretto 17
-jdkenv list --remote --distribution zulu   # what Zulu builds are available?
-jdkenv global 17                            # switch the active JDK
-jdkenv current                              # which one is active?
-jdkenv doctor                               # is anything winning over me on PATH?
+jdkenv list --remote                       # every distribution, grouped by vendor
+jdkenv list --remote 21                    # Java 21 across all vendors
+jdkenv list --remote --distribution zulu   # just Zulu
+jdkenv global 17                           # switch the active JDK
+jdkenv current                             # which one is active?
+jdkenv doctor                              # is anything winning over me on PATH?
 ```
 
 Versions accept prefixes: `21` resolves to the most recent build of that line

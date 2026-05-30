@@ -1,8 +1,8 @@
-//! jdkenv — gestor de versiones de JDK para Windows (nativo, sin WSL/Git Bash).
+//! jdkenv — JDK version manager for Windows (native, no WSL/Git Bash).
 //!
-//! Modelo de diseño: un directory **junction** estable `%USERPROFILE%\.jdkenv\
-//! current` actúa como nivel de indirección. PATH y JAVA_HOME apuntan a `current`
-//! una sola vez (en `setup`); cambiar de versión solo re-apunta el junction.
+//! Design model: a stable directory **junction** `%USERPROFILE%\.jdkenv\
+//! current` acts as a level of indirection. PATH and JAVA_HOME point to `current`
+//! only once (in `setup`); switching version only re-points the junction.
 
 mod arch;
 mod commands;
@@ -13,7 +13,7 @@ mod paths;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-/// Gestor de versiones de JDK para Windows.
+/// JDK version manager for Windows.
 #[derive(Parser)]
 #[command(name = "jdkenv", version, about, long_about = None)]
 struct Cli {
@@ -23,57 +23,62 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Descarga e instala un JDK desde foojay (.zip).
+    /// Download and install a JDK from foojay (.zip).
     Install {
-        /// Versión a instalar (p.ej. `21`, `17.0.13`).
+        /// Version to install (e.g. `21`, `17.0.13`).
         version: String,
-        /// Distribución: temurin (por defecto), corretto, zulu, …
-        #[arg(long, default_value = "temurin")]
+        /// Distribution to install from. Required — there is no default vendor
+        /// (e.g. temurin, corretto, zulu, oracle_open_jdk, …).
+        #[arg(long)]
         distribution: String,
     },
-    /// Activa una versión instalada (re-apunta el junction `current`).
+    /// Activate an installed version (re-points the `current` junction).
     Global {
-        /// Versión instalada a activar (p.ej. `21` o `21.0.5`).
+        /// Installed version to activate (e.g. `21` or `21.0.5`).
         version: String,
     },
-    /// Lista versiones instaladas; con `--remote`, las disponibles en foojay.
+    /// List installed versions; with `--remote`, those available on foojay.
     List {
-        /// Lista versiones remotas (foojay) en lugar de las instaladas.
+        /// With `--remote`: filter by major version across all distributions
+        /// (e.g. `list --remote 21`).
+        version: Option<String>,
+        /// List remote versions (foojay) instead of the installed ones.
         #[arg(long)]
         remote: bool,
-        /// Distribución para `--remote`.
-        #[arg(long, default_value = "temurin")]
-        distribution: String,
+        /// With `--remote`: restrict to a single distribution (optional). When
+        /// omitted, every distribution is listed, grouped by vendor.
+        #[arg(long)]
+        distribution: Option<String>,
     },
-    /// Desinstala una versión (borra su carpeta). Avisa si está en uso.
+    /// Uninstall a version (deletes its folder). Warns if it is in use.
     Uninstall {
-        /// Versión instalada a borrar.
+        /// Installed version to delete.
         version: String,
     },
-    /// Muestra la versión activa y a qué carpeta apunta `current`.
+    /// Show the active version and which folder `current` points to.
     #[command(alias = "which")]
     Current,
-    /// Registra PATH y JAVA_HOME (idempotente). `--system` usa HKLM; `--undo` revierte.
+    /// Register PATH and JAVA_HOME (idempotent). `--system` uses HKLM; `--undo` reverts.
     Setup {
-        /// Edita el PATH de SISTEMA (HKLM) en lugar del de usuario. Requiere admin.
+        /// Edit the SYSTEM PATH (HKLM) instead of the user one. Requires admin.
         #[arg(long)]
         system: bool,
-        /// Revierte el registro de jdkenv (quita PATH y JAVA_HOME). No borra JDKs.
+        /// Revert the jdkenv registry (removes PATH and JAVA_HOME). Does not delete JDKs.
         #[arg(long)]
         undo: bool,
     },
-    /// Diagnostica el entorno (junction, PATH, JAVA_HOME, java.exe en conflicto).
+    /// Diagnose the environment (junction, PATH, JAVA_HOME, conflicting java.exe).
     Doctor,
-    /// [v2 — no implementado] Fija la versión por carpeta (`.jdkenv-version`).
+    /// [v2 — not implemented] Pin the version per folder (`.jdkenv-version`).
     Local {
-        /// Versión para esta carpeta.
+        /// Version for this folder.
         version: String,
     },
 }
 
 fn main() {
     if let Err(e) = run() {
-        // `{e:#}` imprime toda la cadena de contexto de anyhow.
+        // `{e:#}` prints the entire anyhow context chain.
         eprintln!("error: {e:#}");
         std::process::exit(1);
     }
@@ -87,9 +92,10 @@ fn run() -> Result<()> {
         } => commands::install::run(&version, &distribution),
         Command::Global { version } => commands::global::run(&version),
         Command::List {
+            version,
             remote,
             distribution,
-        } => commands::list::run(remote, &distribution),
+        } => commands::list::run(remote, version.as_deref(), distribution.as_deref()),
         Command::Uninstall { version } => commands::uninstall::run(&version),
         Command::Current => commands::current::run(),
         Command::Setup { system, undo } => commands::setup::run(system, undo),

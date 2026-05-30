@@ -1,6 +1,7 @@
-//! Cliente de la foojay Disco API (`https://api.foojay.io/disco/v3.0`) y
-//! descarga/extracción de paquetes JDK. Solo deserializamos los campos que usamos.
+//! foojay Disco API client (`https://api.foojay.io/disco/v3.0`) and
+//! download/extraction of JDK packages. We only deserialize the fields we use.
 
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -13,11 +14,15 @@ use crate::arch::Arch;
 
 const DISCO_BASE: &str = "https://api.foojay.io/disco/v3.0";
 
-/// Un paquete devuelto por foojay en `result[]`.
+/// A package returned by foojay in `result[]`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Package {
     pub distribution: String,
     pub java_version: String,
+    /// Vendor-specific version string (e.g. Corretto `21.0.5.11.1`). Used as the
+    /// dedup key for the remote listing. Absent/null for some distributions.
+    #[serde(default)]
+    pub distribution_version: Option<String>,
     pub filename: String,
     pub links: Links,
 }
@@ -32,9 +37,9 @@ struct PackagesResponse {
     result: Vec<Package>,
 }
 
-/// Agente ureq con seguimiento de redirects (el `pkg_download_redirect` es un
-/// 302 al CDN del distribuidor) y user-agent identificable. Usa rustls (sin
-/// OpenSSL) por las features por defecto de ureq.
+/// ureq agent with redirect following (`pkg_download_redirect` is a
+/// 302 to the distributor's CDN) and an identifiable user-agent. Uses rustls (no
+/// OpenSSL) via ureq's default features.
 fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .redirects(10)
@@ -42,11 +47,11 @@ fn agent() -> ureq::Agent {
         .build()
 }
 
-/// Consulta `/packages` con los filtros fijos de jdkenv (JDK, Windows, `.zip`)
-/// más `version`/`distribution`/`architecture`.
+/// Queries `/packages` with jdkenv's fixed filters (JDK, Windows, `.zip`)
+/// plus `version`/`distribution`/`architecture`.
 fn query_packages(
     version: Option<&str>,
-    distribution: &str,
+    distribution: Option<&str>,
     arch: Arch,
     latest: bool,
 ) -> Result<Vec<Package>> {
@@ -55,13 +60,16 @@ fn query_packages(
         .query("package_type", "jdk")
         .query("operating_system", "windows")
         .query("architecture", arch.foojay())
-        .query("archive_type", "zip")
-        .query("distribution", distribution);
+        .query("archive_type", "zip");
+    // Omitting `distribution` makes foojay return every distribution.
+    if let Some(d) = distribution {
+        req = req.query("distribution", d);
+    }
     if let Some(v) = version {
         req = req.query("version", v);
     }
     if latest {
-        // `available` = el último build disponible por línea de versión.
+        // `available` = the latest available build per version line.
         req = req.query("latest", "available");
     }
 
@@ -69,89 +77,135 @@ fn query_packages(
         Ok(r) => r,
         Err(ureq::Error::Status(code, r)) => {
             let body = r.into_string().unwrap_or_default();
-            bail!("foojay respondió HTTP {code} al consultar paquetes:\n{body}");
+            bail!("foojay responded HTTP {code} while querying packages:\n{body}");
         }
-        Err(e) => return Err(e).context("fallo de red consultando la foojay Disco API"),
+        Err(e) => return Err(e).context("network failure querying the foojay Disco API"),
     };
     let parsed: PackagesResponse = serde_json::from_reader(resp.into_reader())
-        .context("no se pudo parsear la respuesta JSON de foojay")?;
+        .context("could not parse foojay's JSON response")?;
     Ok(parsed.result)
 }
 
-/// Lista los paquetes disponibles para `list --remote` (último build por línea),
-/// ordenados ascendentemente por versión.
-pub fn list_remote(distribution: &str, arch: Arch) -> Result<Vec<Package>> {
-    let mut pkgs = query_packages(None, distribution, arch, true)?;
-    pkgs.sort_by(|a, b| version_key(&a.java_version).cmp(&version_key(&b.java_version)));
-    Ok(pkgs)
+/// One distribution's available versions in the remote listing: sorted ascending
+/// and deduplicated by `distribution_version`.
+pub struct RemoteListing {
+    pub distribution: String,
+    pub versions: Vec<String>,
 }
 
-/// Resuelve el paquete a instalar para `version` + `distribution`, eligiendo el
-/// build más reciente. Error accionable si la combinación no existe.
+/// Lists packages available on foojay, optionally narrowed by `distribution`
+/// and/or major `version`. With `distribution = None`, the `distribution`
+/// parameter is omitted from the query so foojay returns every distribution.
+/// Results are grouped by distribution, deduplicated by `distribution_version`,
+/// and each group is sorted ascending by version.
+pub fn list_remote(
+    distribution: Option<&str>,
+    version: Option<&str>,
+    arch: Arch,
+) -> Result<Vec<RemoteListing>> {
+    let pkgs = query_packages(version, distribution, arch, true)?;
+
+    // Group by distribution (BTreeMap → vendors come out alphabetically).
+    let mut groups: BTreeMap<String, Vec<Package>> = BTreeMap::new();
+    for pkg in pkgs {
+        groups.entry(pkg.distribution.clone()).or_default().push(pkg);
+    }
+
+    let mut out = Vec::new();
+    for (distribution, mut packages) in groups {
+        // Dedup by distribution_version (fall back to java_version when absent).
+        let mut seen = HashSet::new();
+        packages.retain(|p| {
+            let key = p
+                .distribution_version
+                .clone()
+                .unwrap_or_else(|| p.java_version.clone());
+            seen.insert(key)
+        });
+        // Sort ascending by the canonical java version.
+        packages.sort_by(|a, b| version_key(&a.java_version).cmp(&version_key(&b.java_version)));
+        // Display java_version, collapsing exact duplicates (kept adjacent by the
+        // sort) that distinct distribution_versions can otherwise produce.
+        let mut versions: Vec<String> = Vec::new();
+        for p in packages {
+            if versions.last() != Some(&p.java_version) {
+                versions.push(p.java_version);
+            }
+        }
+        out.push(RemoteListing {
+            distribution,
+            versions,
+        });
+    }
+    Ok(out)
+}
+
+/// Resolves the package to install for `version` + `distribution`, picking the
+/// most recent build. Actionable error if the combination does not exist.
 pub fn resolve(version: &str, distribution: &str, arch: Arch) -> Result<Package> {
-    let pkgs = query_packages(Some(version), distribution, arch, true)?;
+    let pkgs = query_packages(Some(version), Some(distribution), arch, true)?;
     pkgs.into_iter()
         .max_by(|a, b| version_key(&a.java_version).cmp(&version_key(&b.java_version)))
         .ok_or_else(|| {
             anyhow!(
-                "no hay build de '{distribution}' {version} para Windows/{} (.zip) en foojay.\n\
-                 Revisa versiones con: jdkenv list --remote --distribution {distribution}",
+                "no '{distribution}' {version} build for Windows/{} (.zip) on foojay.\n\
+                 Check versions with: jdkenv list --remote --distribution {distribution}",
                 arch.foojay()
             )
         })
 }
 
-/// Descarga el `.zip` del `pkg` y lo extrae a `dest`, dejando `bin\java.exe`
-/// directamente bajo `dest` (elimina la carpeta raíz que traen los zips de JDK).
+/// Downloads `pkg`'s `.zip` and extracts it to `dest`, leaving `bin\java.exe`
+/// directly under `dest` (removes the root folder that JDK zips ship with).
 ///
-/// El staging va en el MISMO volumen que `dest` (dentro de `versions\`) para que
-/// el `rename` final sea atómico y no cruce unidades (TEMP podría estar en otra).
+/// Staging goes on the SAME volume as `dest` (inside `versions\`) so the final
+/// `rename` is atomic and does not cross drives (TEMP could be on another).
 pub fn install_package(pkg: &Package, versions_dir: &Path, dest: &Path) -> Result<()> {
     fs::create_dir_all(versions_dir)
-        .with_context(|| format!("no se pudo crear {}", versions_dir.display()))?;
+        .with_context(|| format!("could not create {}", versions_dir.display()))?;
 
     let stem = dest.file_name().and_then(|s| s.to_str()).unwrap_or("jdk");
     let zip_path = versions_dir.join(format!(".download-{stem}.zip"));
     let stage_dir = versions_dir.join(format!(".stage-{stem}"));
-    // Limpia restos de intentos previos.
+    // Clean up leftovers from previous attempts.
     let _ = fs::remove_file(&zip_path);
     let _ = fs::remove_dir_all(&stage_dir);
 
     let result = (|| -> Result<()> {
         download_to(&pkg.links.pkg_download_redirect, &zip_path)
-            .with_context(|| format!("descargando {}", pkg.filename))?;
-        extract_zip(&zip_path, &stage_dir).context("extrayendo el archivo JDK")?;
+            .with_context(|| format!("downloading {}", pkg.filename))?;
+        extract_zip(&zip_path, &stage_dir).context("extracting the JDK archive")?;
 
         let java_home = find_java_home(&stage_dir)
-            .context("no se encontró bin\\java.exe en el archivo descargado")?;
+            .context("bin\\java.exe not found in the downloaded archive")?;
 
         if dest.exists() {
-            // Propagamos el error real de limpieza; si no, el rename siguiente
-            // fallaría con un mensaje confuso ("ya existe" / "acceso denegado")
-            // que oculta la causa (p.ej. un java.exe en uso bloqueando la carpeta).
+            // Propagate the real cleanup error; otherwise the following rename
+            // would fail with a confusing message ("already exists" / "access denied")
+            // that hides the cause (e.g. a java.exe in use locking the folder).
             fs::remove_dir_all(dest)
-                .with_context(|| format!("no se pudo limpiar la carpeta previa {}", dest.display()))?;
+                .with_context(|| format!("could not clean up the previous folder {}", dest.display()))?;
         }
         fs::rename(&java_home, dest)
-            .with_context(|| format!("moviendo {} → {}", java_home.display(), dest.display()))?;
+            .with_context(|| format!("moving {} → {}", java_home.display(), dest.display()))?;
         Ok(())
     })();
 
-    // Limpieza pase lo que pase.
+    // Clean up no matter what.
     let _ = fs::remove_file(&zip_path);
     let _ = fs::remove_dir_all(&stage_dir);
     result
 }
 
-/// GET con seguimiento de redirects, volcando el cuerpo a `dest` con barra de
-/// progreso si el servidor da `Content-Length`.
+/// GET with redirect following, dumping the body to `dest` with a progress
+/// bar if the server provides `Content-Length`.
 fn download_to(url: &str, dest: &Path) -> Result<()> {
     let resp = match agent().get(url).call() {
         Ok(r) => r,
         Err(ureq::Error::Status(code, r)) => {
-            bail!("la descarga devolvió HTTP {code} ({})", r.get_url());
+            bail!("the download returned HTTP {code} ({})", r.get_url());
         }
-        Err(e) => return Err(e).context("fallo de red durante la descarga"),
+        Err(e) => return Err(e).context("network failure during the download"),
     };
     let total: u64 = resp
         .header("Content-Length")
@@ -164,7 +218,7 @@ fn download_to(url: &str, dest: &Path) -> Result<()> {
             ProgressStyle::with_template(
                 "  {bar:40.cyan/blue} {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
             )
-            .expect("plantilla de progreso válida"),
+            .expect("valid progress template"),
         );
         pb
     } else {
@@ -173,15 +227,15 @@ fn download_to(url: &str, dest: &Path) -> Result<()> {
 
     let mut reader = resp.into_reader();
     let mut file =
-        File::create(dest).with_context(|| format!("no se pudo crear {}", dest.display()))?;
+        File::create(dest).with_context(|| format!("could not create {}", dest.display()))?;
     let mut buf = vec![0u8; 64 * 1024];
     loop {
-        let n = reader.read(&mut buf).context("leyendo el cuerpo de la descarga")?;
+        let n = reader.read(&mut buf).context("reading the download body")?;
         if n == 0 {
             break;
         }
         file.write_all(&buf[..n])
-            .with_context(|| format!("escribiendo {}", dest.display()))?;
+            .with_context(|| format!("writing {}", dest.display()))?;
         pb.inc(n as u64);
     }
     file.flush()?;
@@ -189,17 +243,17 @@ fn download_to(url: &str, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Extrae todas las entradas del zip a `dest`. `enclosed_name()` neutraliza
-/// rutas con `..` o absolutas (defensa frente a zip-slip).
+/// Extracts all zip entries to `dest`. `enclosed_name()` neutralizes
+/// paths with `..` or absolute paths (defense against zip-slip).
 fn extract_zip(zip_path: &Path, dest: &Path) -> Result<()> {
     let file = File::open(zip_path)
-        .with_context(|| format!("no se pudo abrir {}", zip_path.display()))?;
-    let mut archive = zip::ZipArchive::new(file).context("archivo .zip inválido o corrupto")?;
+        .with_context(|| format!("could not open {}", zip_path.display()))?;
+    let mut archive = zip::ZipArchive::new(file).context("invalid or corrupt .zip archive")?;
     fs::create_dir_all(dest)?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
         let Some(rel) = entry.enclosed_name() else {
-            continue; // entrada con ruta peligrosa: la saltamos
+            continue; // entry with a dangerous path: skip it
         };
         let out = dest.join(rel);
         if entry.is_dir() {
@@ -209,16 +263,16 @@ fn extract_zip(zip_path: &Path, dest: &Path) -> Result<()> {
                 fs::create_dir_all(parent)?;
             }
             let mut outfile =
-                File::create(&out).with_context(|| format!("escribiendo {}", out.display()))?;
+                File::create(&out).with_context(|| format!("writing {}", out.display()))?;
             io::copy(&mut entry, &mut outfile)?;
         }
     }
     Ok(())
 }
 
-/// Localiza la carpeta que contiene `bin\java.exe` dentro de `stage`.
-/// Casi siempre es la única carpeta raíz del zip; cubrimos también el caso raro
-/// sin carpeta raíz.
+/// Locates the folder containing `bin\java.exe` within `stage`.
+/// It's almost always the zip's single root folder; we also cover the rare case
+/// without a root folder.
 fn find_java_home(stage: &Path) -> Result<PathBuf> {
     for entry in fs::read_dir(stage)? {
         let dir = entry?.path();
@@ -229,11 +283,11 @@ fn find_java_home(stage: &Path) -> Result<PathBuf> {
     if stage.join("bin").join("java.exe").is_file() {
         return Ok(stage.to_path_buf());
     }
-    bail!("estructura de JDK no reconocida en {}", stage.display())
+    bail!("unrecognized JDK structure in {}", stage.display())
 }
 
-/// Componentes numéricos de una versión, para ordenar. Descarta la
-/// build-metadata tras `+` (en semver no afecta la precedencia).
+/// Numeric components of a version, for sorting. Discards the
+/// build metadata after `+` (in semver it does not affect precedence).
 fn version_key(v: &str) -> Vec<u64> {
     v.split('+')
         .next()

@@ -13,40 +13,40 @@ pub fn run(version: &str, distribution: &str) -> Result<()> {
     let arch = Arch::detect()?;
 
     println!(
-        "Buscando {distribution} {version} para Windows/{} en foojay…",
+        "Searching {distribution} {version} for Windows/{} on foojay…",
         arch.foojay()
     );
     let pkg = foojay::resolve(version, distribution, arch)?;
-    // Usamos el nombre de distribución y la versión canónicos que devuelve foojay.
+    // We use the canonical distribution name and version returned by foojay.
     let dir_name = format!("{}-{}", pkg.distribution, pkg.java_version);
     let dest = layout.versions.join(&dir_name);
 
     if dest.is_dir() {
-        println!("Ya estaba instalado: {dir_name}");
+        println!("Already installed: {dir_name}");
     } else {
-        println!("Descargando {} …", pkg.filename);
+        println!("Downloading {} …", pkg.filename);
         foojay::install_package(&pkg, &layout.versions, &dest)?;
-        println!("Instalado: {}", dest.display());
+        println!("Installed: {}", dest.display());
     }
 
-    // Si es el PRIMER JDK (aún no hay junction `current`), lo activamos solo.
+    // If it's the FIRST JDK (no `current` junction yet), we activate it automatically.
     if layout.current_target().is_none() {
         layout.repoint_current(&dest)?;
-        println!("'{dir_name}' es ahora la versión activa (global).");
+        println!("'{dir_name}' is now the active version (global).");
         hint_setup_if_needed(&layout);
     } else {
-        println!("Actívala con:  jdkenv global {}", pkg.java_version);
+        println!("Activate it with:  jdkenv global {}", pkg.java_version);
     }
     Ok(())
 }
 
-/// Si ni el PATH de usuario ni el de sistema contienen `current\bin`, sugiere
-/// ejecutar `setup` (caso típico tras la primera instalación).
+/// If neither the user PATH nor the system PATH contains `current\bin`, suggests
+/// running `setup` (typical case after the first installation).
 fn hint_setup_if_needed(layout: &Layout) {
     let current_bin = layout.current_bin();
-    // Separamos el PATH por ';' y comparamos cada entrada con same_path (en vez
-    // de un .contains() sobre la cadena, que daría falsos positivos con prefijos
-    // como `...\bin` ⊂ `...\bin_extra`).
+    // We split the PATH by ';' and compare each entry with same_path (instead
+    // of a .contains() over the string, which would give false positives with
+    // prefixes like `...\bin` ⊂ `...\bin_extra`).
     let configured = |scope| {
         env_win::read_path(scope)
             .ok()
@@ -55,7 +55,7 @@ fn hint_setup_if_needed(layout: &Layout) {
             .unwrap_or(false)
     };
     if !configured(Scope::User) && !configured(Scope::System) {
-        println!("\nParece que aún no ejecutaste `jdkenv setup`.");
-        println!("Hazlo una vez para registrar PATH y JAVA_HOME, luego abre una terminal nueva.");
+        println!("\nIt looks like you haven't run `jdkenv setup` yet.");
+        println!("Do it once to register PATH and JAVA_HOME, then open a NEW terminal.");
     }
 }

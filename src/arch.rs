@@ -1,8 +1,8 @@
-//! Detección de arquitectura en runtime y mapeo al parámetro de la foojay Disco API.
+//! Runtime architecture detection and mapping to the foojay Disco API parameter.
 
 use anyhow::{bail, Result};
 
-/// Arquitectura de CPU soportada por jdkenv en Windows.
+/// CPU architecture supported by jdkenv on Windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Arch {
     X64,
@@ -10,24 +10,24 @@ pub enum Arch {
 }
 
 impl Arch {
-    /// Detecta la arquitectura del binario en ejecución.
+    /// Detects the architecture of the running binary.
     ///
-    /// Usamos `std::env::consts::ARCH` (la arch del proceso, no del SO) a
-    /// propósito: queremos un JDK que corra nativamente junto a este
-    /// `jdkenv.exe`. En un Windows ARM64 ejecutando un jdkenv x64 bajo
-    /// emulación, esto reporta x64 y se instala un JDK x64 — que es lo
-    /// coherente con el resto del PATH heredado por las shells.
+    /// We use `std::env::consts::ARCH` (the process arch, not the OS arch) on
+    /// purpose: we want a JDK that runs natively alongside this
+    /// `jdkenv.exe`. On a Windows ARM64 running a jdkenv x64 under
+    /// emulation, this reports x64 and an x64 JDK is installed — which is
+    /// consistent with the rest of the PATH inherited by the shells.
     pub fn detect() -> Result<Self> {
         match std::env::consts::ARCH {
             "x86_64" => Ok(Arch::X64),
             "aarch64" => Ok(Arch::Aarch64),
             other => bail!(
-                "arquitectura no soportada: '{other}' (jdkenv soporta x86_64 y aarch64 en Windows)"
+                "unsupported architecture: '{other}' (jdkenv supports x86_64 and aarch64 on Windows)"
             ),
         }
     }
 
-    /// Valor del parámetro `architecture` que espera foojay.
+    /// Value of the `architecture` parameter expected by foojay.
     pub fn foojay(self) -> &'static str {
         match self {
             Arch::X64 => "x64",
