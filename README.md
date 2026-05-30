@@ -32,7 +32,7 @@ and you're done.
 | Command | What it does |
 |---|---|
 | `jdkenv install <version> --distribution <dist>` | Downloads and installs a JDK (`.zip`) from foojay. `--distribution` is **required** (no default vendor). The first JDK you install is activated automatically. |
-| `jdkenv global <version>` | Activates an installed version (re-points the `current` junction). |
+| `jdkenv global <version> [--distribution <dist>]` | Activates an installed version (re-points the `current` junction). A bare major (e.g. `21`) works when unambiguous; if several installed JDKs share that major it errors and asks you to disambiguate by distribution or exact version. |
 | `jdkenv list` | Lists installed versions (`*` = active). |
 | `jdkenv list --remote [<major>] [--distribution <dist>]` | Lists versions available on foojay, grouped by distribution (one header per vendor). Optional `<major>` (e.g. `21`) filters by major version across all vendors; `--distribution` restricts to a single vendor. |
 | `jdkenv uninstall <version>` | Deletes a version. Refuses if it's the active one. |

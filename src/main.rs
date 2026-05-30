@@ -34,8 +34,12 @@ enum Command {
     },
     /// Activate an installed version (re-points the `current` junction).
     Global {
-        /// Installed version to activate (e.g. `21` or `21.0.5`).
+        /// Installed version to activate (e.g. `21` or `21.0.5`). A bare major
+        /// works when unambiguous; otherwise jdkenv asks you to disambiguate.
         version: String,
+        /// Disambiguate when several installed JDKs share the major version.
+        #[arg(long)]
+        distribution: Option<String>,
     },
     /// List installed versions; with `--remote`, those available on foojay.
     List {
@@ -90,7 +94,10 @@ fn run() -> Result<()> {
             version,
             distribution,
         } => commands::install::run(&version, &distribution),
-        Command::Global { version } => commands::global::run(&version),
+        Command::Global {
+            version,
+            distribution,
+        } => commands::global::run(&version, distribution.as_deref()),
         Command::List {
             version,
             remote,

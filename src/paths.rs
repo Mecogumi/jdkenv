@@ -88,6 +88,24 @@ impl Layout {
         Ok(best)
     }
 
+    /// Returns ALL installed JDKs matching `query` (and optional `distribution`),
+    /// sorted ascending by version. `global` uses this to detect ambiguity — e.g.
+    /// two distributions (or two builds) sharing the same major version.
+    pub fn find_matching(
+        &self,
+        query: &str,
+        distribution: Option<&str>,
+    ) -> Result<Vec<InstalledJdk>> {
+        let mut matches: Vec<InstalledJdk> = self
+            .installed()?
+            .into_iter()
+            .filter(|j| distribution.is_none_or(|d| j.distribution == d))
+            .filter(|j| version_matches(&j.dir_name, &j.version, query))
+            .collect();
+        matches.sort_by_key(|a| a.version_key());
+        Ok(matches)
+    }
+
     /// Re-points the `current` junction → `target`.
     ///
     /// `junction::delete` removes ONLY the reparse point, not the target (that's why
@@ -204,9 +222,10 @@ fn matches_componentwise(full: &str, query: &str) -> bool {
     if full == query {
         return true;
     }
-    // '.' separates components; the query is a prefix if each of its components equals
-    // the corresponding one in `full`. Comparing components avoids `2` ⊑ `21`.
-    let q: Vec<&str> = query.split('.').collect();
-    let f: Vec<&str> = full.split('.').collect();
+    // '.' and '+' separate components; the query is a prefix if each of its
+    // components equals the corresponding one in `full`. Splitting on '+' lets
+    // `21.0.11` match the stored `21.0.11+10`. Comparing components avoids `2` ⊑ `21`.
+    let q: Vec<&str> = query.split(['.', '+']).collect();
+    let f: Vec<&str> = full.split(['.', '+']).collect();
     q.len() <= f.len() && q.iter().zip(&f).all(|(a, b)| a == b)
 }
