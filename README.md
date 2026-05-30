@@ -1,65 +1,67 @@
 # jdkenv
 
-Gestor de versiones de **JDK para Windows**, nativo (PowerShell/cmd, sin WSL ni
-Git Bash). Descarga JDKs desde la [foojay Disco API](https://api.foojay.io/) y
-cambia la versión activa al instante, sin reiniciar la terminal.
+A **JDK version manager for Windows**, native (PowerShell/cmd — no WSL, no Git
+Bash). It downloads JDKs from the [foojay Disco API](https://api.foojay.io/) and
+switches the active version instantly, without restarting your terminal.
 
-Inspirado en `pyenv`/`jenv`, implementado en Rust como un único `.exe` sin
-dependencias externas (TLS vía rustls, no requiere OpenSSL).
+Inspired by `pyenv`/`jenv`, written in Rust as a single dependency-free `.exe`
+(TLS via rustls — no OpenSSL required).
 
 ---
 
-## Instalación de un comando
+## One-command install
 
 ```powershell
-irm https://<MI_DOMINIO>/install.ps1 | iex
+irm https://<MY_DOMAIN>/install.ps1 | iex
 ```
 
-Esto descarga el binario adecuado (x64/arm64) a `%USERPROFILE%\.jdkenv\bin\` y
-ejecuta `jdkenv setup` para registrar `PATH` y `JAVA_HOME`. Abre **una terminal
-nueva** y listo.
+This downloads the right binary (x64/arm64) to `%USERPROFILE%\.jdkenv\bin\` and
+runs `jdkenv setup` to register `PATH` and `JAVA_HOME`. Open a **new terminal**
+and you're done.
 
-> **Nota de seguridad (honesta):** `irm | iex` ejecuta código remoto sin
-> verificar, igual que `curl | bash`. Es el patrón estándar de Scoop/mise, pero
-> implica confiar en la fuente (`<MI_DOMINIO>`). Si prefieres, descarga el
-> `.exe` desde [Releases](https://github.com/<USER>/jdkenv/releases/latest),
-> colócalo en `%USERPROFILE%\.jdkenv\bin\jdkenv.exe` y ejecuta `jdkenv setup`.
+> **Security note (honest):** `irm | iex` runs remote code without verification,
+> exactly like `curl | bash`. It's the standard pattern used by Scoop/mise, but
+> it means trusting the source (`<MY_DOMAIN>`). If you prefer, download the
+> `.exe` from [Releases](https://github.com/<USER>/jdkenv/releases/latest), drop
+> it at `%USERPROFILE%\.jdkenv\bin\jdkenv.exe`, and run `jdkenv setup`.
 
 ---
 
-## Comandos
+## Commands
 
-| Comando | Qué hace |
+| Command | What it does |
 |---|---|
-| `jdkenv install <version> [--distribution <dist>]` | Descarga e instala un JDK (`.zip`) desde foojay. `--distribution` por defecto `temurin`. El primer JDK instalado se activa solo. |
-| `jdkenv global <version>` | Activa una versión instalada (re-apunta el junction `current`). |
-| `jdkenv list` | Lista las versiones instaladas (`*` = activa). |
-| `jdkenv list --remote [--distribution <dist>]` | Lista versiones disponibles en foojay para Windows + tu arquitectura. |
-| `jdkenv uninstall <version>` | Borra una versión. Se niega si es la activa. |
-| `jdkenv current` (alias `which`) | Muestra la versión activa y a qué carpeta apunta `current`. |
-| `jdkenv setup [--system]` | Registra `PATH`/`JAVA_HOME`. Sin flag: PATH de usuario. `--system`: PATH de sistema (pide elevación). |
-| `jdkenv doctor` | Diagnostica el entorno y detecta otro `java.exe` que te gane en el PATH. |
-| `jdkenv local <version>` | *(v2, no implementado)* Versión por carpeta. |
+| `jdkenv install <version> [--distribution <dist>]` | Downloads and installs a JDK (`.zip`) from foojay. `--distribution` defaults to `temurin`. The first JDK you install is activated automatically. |
+| `jdkenv global <version>` | Activates an installed version (re-points the `current` junction). |
+| `jdkenv list` | Lists installed versions (`*` = active). |
+| `jdkenv list --remote [--distribution <dist>]` | Lists versions available on foojay for Windows + your architecture. |
+| `jdkenv uninstall <version>` | Deletes a version. Refuses if it's the active one. |
+| `jdkenv current` (alias `which`) | Shows the active version and where `current` points. |
+| `jdkenv setup [--system]` | Registers `PATH`/`JAVA_HOME`. Without a flag: user PATH. `--system`: system PATH (prompts for elevation). |
+| `jdkenv setup --undo [--system]` | Reverts `setup`: removes jdkenv's PATH entries and `JAVA_HOME`. Does **not** delete installed JDKs. |
+| `jdkenv doctor` | Diagnoses your environment and detects another `java.exe` that wins on PATH. |
+| `jdkenv local <version>` | *(v2, not implemented yet)* Per-directory version. |
 
-### Ejemplos
+### Examples
 
 ```powershell
-jdkenv install 21                          # Temurin 21 (última build)
+jdkenv install 21                          # Temurin 21 (latest build)
 jdkenv install 17 --distribution corretto  # Corretto 17
-jdkenv list --remote --distribution zulu   # ¿qué Zulu hay disponible?
-jdkenv global 17                            # cambia el JDK activo
-jdkenv current                              # ¿cuál está activo?
-jdkenv doctor                               # ¿algo me está ganando en el PATH?
+jdkenv list --remote --distribution zulu   # what Zulu builds are available?
+jdkenv global 17                            # switch the active JDK
+jdkenv current                              # which one is active?
+jdkenv doctor                               # is anything winning over me on PATH?
 ```
 
-Las versiones aceptan prefijos: `21` resuelve a la build más reciente de esa
-línea (p.ej. `21.0.11+10`); también puedes ser específico (`17.0.13`).
+Versions accept prefixes: `21` resolves to the most recent build of that line
+(e.g. `21.0.11+10`); you can also be specific (`17.0.13`). foojay distribution
+names use underscores (e.g. `oracle_open_jdk`, `sap_machine`).
 
 ---
 
-## El modelo de junction (lo que lo hace instantáneo)
+## The junction model (what makes switching instant)
 
-El árbol vive bajo `%USERPROFILE%\.jdkenv\`:
+Everything lives under `%USERPROFILE%\.jdkenv\`:
 
 ```
 .jdkenv\
@@ -68,94 +70,111 @@ El árbol vive bajo `%USERPROFILE%\.jdkenv\`:
 ├── versions\
 │   ├── temurin-21.0.11+10\
 │   └── corretto-17.0.13\
-└── current\            ← junction NTFS → una carpeta dentro de versions\
+└── current\            ← NTFS junction → a folder inside versions\
 ```
 
-La clave: `PATH` y `JAVA_HOME` apuntan **siempre** a `current`, nunca a una
-versión concreta:
+The key idea: `PATH` and `JAVA_HOME` **always** point at `current`, never at a
+specific version:
 
-- `PATH` contiene la ruta literal `...\.jdkenv\current\bin`
+- `PATH` contains the literal path `...\.jdkenv\current\bin`
 - `JAVA_HOME = ...\.jdkenv\current`
 
-Cambiar de versión (`jdkenv global <v>`) solo **re-apunta** el junction
-`current` → `versions\<dist>-<version>`. Como `current\bin` es una ruta literal
-del PATH y `current` es un junction:
+Switching versions (`jdkenv global <v>`) only **re-points** the `current`
+junction → `versions\<dist>-<version>`. Because `current\bin` is a literal PATH
+entry and `current` is a junction:
 
-- Las terminales **ya abiertas** toman la versión nueva en el siguiente `java`
-  que lancen — sin reiniciar ni rehacer el broadcast.
-- `JAVA_HOME` sigue siendo correcto sin tocar el registro.
+- **Already-open** terminals pick up the new version on the next `java` they
+  launch — no restart, no re-broadcast needed.
+- `JAVA_HOME` stays correct without touching the registry.
 
-Se usa un **directory junction** (no un symlink) a propósito: los junctions
-**no requieren permisos de administrador** ni Developer Mode. Re-apuntar borra
-el junction (esto **no** borra el target — un junction es solo un reparse point)
-y lo crea de nuevo apuntando a la versión elegida.
-
----
-
-## Los dos PATH: usuario vs sistema (importante)
-
-En Windows hay dos PATH y el efectivo se compone **SISTEMA primero, USUARIO
-después**:
-
-- PATH de **usuario** → `HKCU\Environment`
-- PATH de **sistema** → `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`
-
-Consecuencia: anteponer en el PATH de **usuario** (lo que hace `jdkenv setup`
-por defecto) **no vence** a un `java.exe` que esté en el PATH de **sistema** — el
-caso típico es el `javapath` de Oracle, que el instalador de Oracle deja en el
-PATH de sistema.
-
-- `jdkenv setup` (por defecto) edita solo `HKCU`: cubre la mayoría de casos sin
-  pedir UAC.
-- `jdkenv setup --system` edita `HKLM` y antepone ahí para **prioridad
-  absoluta**. Requiere elevación; si no corres como admin, jdkenv se **relanza
-  elevado** (UAC) con los mismos argumentos.
-- `jdkenv doctor` te dice cuándo necesitas `--system` (detecta qué `java.exe`
-  gana realmente en tu PATH).
-
-> Muchas build tools (**Maven**, **Gradle**) priorizan `JAVA_HOME` sobre el
-> PATH. Como `setup` también setea `JAVA_HOME → current`, gran parte de los
-> flujos funcionan aunque el orden del PATH no sea perfecto.
-
-Detalles de implementación en Windows:
-- Editamos el registro **directamente**, no con `setx` (que trunca el PATH a
-  1024 caracteres).
-- Al reescribir `Path` **preservamos su tipo** (`REG_EXPAND_SZ`): degradarlo a
-  `REG_SZ` rompería referencias como `%SystemRoot%` ya presentes.
-- Tras escribir, hacemos *broadcast* de `WM_SETTINGCHANGE` para que las
-  terminales nuevas tomen el cambio sin cerrar sesión.
+A **directory junction** is used on purpose (not a symlink): junctions **don't
+require administrator rights** or Developer Mode. Re-pointing deletes the
+junction (this does **not** delete the target — a junction is just a reparse
+point) and recreates it pointing at the chosen version.
 
 ---
 
-## Compilar desde el código
+## The two PATHs: user vs system (important)
 
-Requiere [Rust](https://rustup.rs/) (toolchain MSVC).
+On Windows there are two PATHs, and the effective one is composed **SYSTEM
+first, USER second**:
+
+- **User** PATH → `HKCU\Environment`
+- **System** PATH → `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`
+
+Consequence: prepending to the **user** PATH (what `jdkenv setup` does by
+default) **does not beat** a `java.exe` that sits in the **system** PATH — the
+classic case being Oracle's `javapath`, which the Oracle installer drops into
+the system PATH.
+
+- `jdkenv setup` (default) edits only `HKCU`: covers most cases without a UAC
+  prompt.
+- `jdkenv setup --system` edits `HKLM` and prepends there for **absolute
+  priority**. It requires elevation; if you're not running as admin, jdkenv
+  **relaunches itself elevated** (UAC) with the same arguments.
+- `jdkenv doctor` tells you when you need `--system` (it detects which
+  `java.exe` actually wins on your PATH).
+
+> Many build tools (**Maven**, **Gradle**) prioritize `JAVA_HOME` over PATH.
+> Since `setup` also sets `JAVA_HOME → current`, a lot of workflows just work
+> even when the PATH order isn't perfect.
+
+Windows implementation details:
+- The registry is edited **directly**, not with `setx` (which truncates PATH at
+  1024 characters).
+- When rewriting `Path`, its value **type is preserved** (`REG_EXPAND_SZ`):
+  downgrading it to `REG_SZ` would break existing references like `%SystemRoot%`.
+- After writing, a `WM_SETTINGCHANGE` broadcast lets new terminals pick up the
+  change without logging off.
+
+---
+
+## Undoing / uninstalling
+
+`jdkenv setup --undo` reverses what `setup` did: it removes jdkenv's two PATH
+entries and deletes `JAVA_HOME` — but only if `JAVA_HOME` still points at jdkenv
+(it won't clobber a `JAVA_HOME` you set yourself). Add `--system` to undo a
+`setup --system`. It is idempotent and does **not** remove installed JDKs or the
+`current` junction.
+
+To remove everything, including the installed JDKs:
+
+```powershell
+jdkenv setup --undo        # (and `jdkenv setup --undo --system` if you ran --system)
+Remove-Item -Recurse -Force "$env:USERPROFILE\.jdkenv"
+```
+
+---
+
+## Build from source
+
+Requires [Rust](https://rustup.rs/) (MSVC toolchain).
 
 ```powershell
 cargo build --release
-# binario en target\release\jdkenv.exe
+# binary at target\release\jdkenv.exe
 
-# Targets soportados:
+# Supported targets:
 #   x86_64-pc-windows-msvc   (x64)
 #   aarch64-pc-windows-msvc  (ARM64)
 ```
 
-El proyecto compila sin warnings y pasa `cargo clippy`.
+The project builds with no warnings and passes `cargo clippy`.
 
-### Estructura
+### Layout
 
 ```
 src/
-├── main.rs        # parser clap + dispatch
-├── arch.rs        # detección x64/aarch64 → parámetro de foojay
-├── paths.rs       # layout .jdkenv, junction (crear/re-apuntar), versiones instaladas
-├── foojay.rs      # cliente Disco API + descarga/extracción del .zip
-├── env_win.rs     # PATH/JAVA_HOME en el registro, broadcast, elevación UAC
+├── main.rs        # clap parser + dispatch
+├── arch.rs        # x64/aarch64 detection → foojay parameter
+├── paths.rs       # .jdkenv layout, junction (create/re-point), installed versions
+├── foojay.rs      # Disco API client + .zip download/extraction
+├── env_win.rs     # PATH/JAVA_HOME in the registry, broadcast, UAC elevation
 └── commands\      # install, global, list, uninstall, current, setup, doctor, local
 ```
 
 ---
 
-## Licencia
+## License
 
-A tu elección (rellena antes de publicar).
+Your choice (fill in before publishing).

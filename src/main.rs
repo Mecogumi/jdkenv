@@ -53,11 +53,14 @@ enum Command {
     /// Muestra la versión activa y a qué carpeta apunta `current`.
     #[command(alias = "which")]
     Current,
-    /// Registra PATH y JAVA_HOME (idempotente). `--system` usa HKLM (elevación).
+    /// Registra PATH y JAVA_HOME (idempotente). `--system` usa HKLM; `--undo` revierte.
     Setup {
         /// Edita el PATH de SISTEMA (HKLM) en lugar del de usuario. Requiere admin.
         #[arg(long)]
         system: bool,
+        /// Revierte el registro de jdkenv (quita PATH y JAVA_HOME). No borra JDKs.
+        #[arg(long)]
+        undo: bool,
     },
     /// Diagnostica el entorno (junction, PATH, JAVA_HOME, java.exe en conflicto).
     Doctor,
@@ -89,7 +92,7 @@ fn run() -> Result<()> {
         } => commands::list::run(remote, &distribution),
         Command::Uninstall { version } => commands::uninstall::run(&version),
         Command::Current => commands::current::run(),
-        Command::Setup { system } => commands::setup::run(system),
+        Command::Setup { system, undo } => commands::setup::run(system, undo),
         Command::Doctor => commands::doctor::run(),
         Command::Local { version } => commands::local::run(&version),
     }

@@ -10,8 +10,26 @@ use crate::paths::{self, Layout};
 ///   sistema-primero, esto es lo único que vence a un JDK ya presente en el PATH
 ///   de sistema (p.ej. el `javapath` de Oracle). Requiere elevación: si no la
 ///   tenemos, relanzamos el proceso con UAC y los mismos argumentos.
-pub fn run(system: bool) -> Result<()> {
+/// - Con `--undo`: revierte lo anterior (quita del PATH las entradas de jdkenv y
+///   borra `JAVA_HOME` si apunta a jdkenv). No borra JDKs ni el junction.
+pub fn run(system: bool, undo: bool) -> Result<()> {
     let layout = Layout::resolve()?;
+
+    // --undo no necesita crear directorios ni copiar el exe.
+    if undo {
+        if system && !env_win::is_elevated() {
+            println!("`setup --system --undo` requiere administrador; solicitando elevación (UAC)…");
+            let code = env_win::relaunch_elevated(&[
+                "setup".to_string(),
+                "--system".to_string(),
+                "--undo".to_string(),
+            ])?;
+            std::process::exit(code);
+        }
+        let scope = if system { Scope::System } else { Scope::User };
+        return undo_apply(&layout, scope);
+    }
+
     layout.ensure_dirs()?;
     install_self(&layout)?;
 
@@ -54,6 +72,49 @@ fn apply(layout: &Layout, scope: Scope) -> Result<()> {
         println!("\nYa estaba todo configurado (sin cambios).");
     }
     println!("Prueba:  jdkenv install 21");
+    Ok(())
+}
+
+/// Inverso de [`apply`]: quita del PATH las entradas de jdkenv y borra
+/// `JAVA_HOME` (solo si apunta a jdkenv). NO toca los JDKs instalados ni el
+/// junction `current` — eso se elimina borrando la carpeta `.jdkenv`.
+fn undo_apply(layout: &Layout, scope: Scope) -> Result<()> {
+    let current_bin = layout.current_bin().to_string_lossy().into_owned();
+    let own_bin = layout.bin.to_string_lossy().into_owned();
+    let java_home = layout.current.to_string_lossy().into_owned();
+
+    let path_changed = env_win::remove_from_path(scope, &[&current_bin, &own_bin])?;
+    let jh = env_win::clear_java_home_if(scope, &java_home)?;
+    let jh_removed = matches!(jh, env_win::JavaHomeUndo::Removed);
+
+    let scope_name = match scope {
+        Scope::User => "usuario",
+        Scope::System => "sistema",
+    };
+    println!("Deshaciendo el registro de jdkenv en el entorno de {scope_name}:");
+    if path_changed {
+        println!("  PATH: eliminadas las entradas de jdkenv (current\\bin y bin)");
+    } else {
+        println!("  PATH: no había entradas de jdkenv que quitar");
+    }
+    match jh {
+        env_win::JavaHomeUndo::Removed => println!("  JAVA_HOME: eliminado"),
+        env_win::JavaHomeUndo::NotSet => println!("  JAVA_HOME: no estaba definido"),
+        env_win::JavaHomeUndo::KeptForeign(v) => {
+            println!("  JAVA_HOME: conservado (apunta a '{v}', no a jdkenv)")
+        }
+    }
+
+    if path_changed || jh_removed {
+        env_win::broadcast_env_change();
+        println!("\nListo. Abre una terminal NUEVA para que tome los cambios.");
+    } else {
+        println!("\nNo había nada que deshacer (sin cambios).");
+    }
+    println!(
+        "Nota: esto NO borra los JDKs instalados ni el junction. Para eliminarlo\n\
+         todo, borra la carpeta %USERPROFILE%\\.jdkenv."
+    );
     Ok(())
 }
 

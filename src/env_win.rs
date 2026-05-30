@@ -149,6 +149,64 @@ pub fn set_java_home(scope: Scope, value: &str) -> Result<bool> {
     Ok(true)
 }
 
+/// Resultado de intentar deshacer `JAVA_HOME` (lo usa `setup --undo`).
+pub enum JavaHomeUndo {
+    /// Apuntaba a jdkenv y se eliminó.
+    Removed,
+    /// No estaba definido.
+    NotSet,
+    /// Apunta a otra cosa (no de jdkenv): lo dejamos intacto.
+    KeptForeign(String),
+}
+
+/// Quita del PATH del `scope` las `entries` indicadas (comparación normalizada),
+/// dejando el resto intacto y preservando el vtype. Devuelve `true` si quitó
+/// algo. Es la operación inversa de [`prepend_path`].
+pub fn remove_from_path(scope: Scope, entries: &[&str]) -> Result<bool> {
+    let key = scope.open(KEY_READ | KEY_SET_VALUE)?;
+    let Some((current, vtype)) = read_value(&key, "Path")? else {
+        return Ok(false);
+    };
+    let remove_norm: Vec<String> = entries.iter().map(|e| normalize(e)).collect();
+
+    let mut removed_any = false;
+    let kept: Vec<&str> = current
+        .split(';')
+        .filter(|part| {
+            // Descarta solo las entradas de jdkenv; todo lo demás (incluidas
+            // entradas vacías) se conserva verbatim para no alterar de más.
+            if !part.is_empty() && remove_norm.contains(&normalize(part)) {
+                removed_any = true;
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+
+    if !removed_any {
+        return Ok(false);
+    }
+    write_value(&key, "Path", &kept.join(";"), vtype)?;
+    Ok(true)
+}
+
+/// Si `JAVA_HOME` apunta a `expected` (el `current` de jdkenv), lo elimina. Si
+/// apunta a otra cosa, lo deja intacto: no pisamos un `JAVA_HOME` ajeno que el
+/// usuario pudiera tener de antes.
+pub fn clear_java_home_if(scope: Scope, expected: &str) -> Result<JavaHomeUndo> {
+    let key = scope.open(KEY_READ | KEY_SET_VALUE)?;
+    match read_value(&key, "JAVA_HOME")? {
+        None => Ok(JavaHomeUndo::NotSet),
+        Some((current, _)) if normalize(&current) == normalize(expected) => {
+            key.delete_value("JAVA_HOME")
+                .context("no se pudo eliminar JAVA_HOME del registro")?;
+            Ok(JavaHomeUndo::Removed)
+        }
+        Some((current, _)) => Ok(JavaHomeUndo::KeptForeign(current)),
+    }
+}
+
 /// Lee el PATH del `scope` sin expandir variables. `None` si no existe.
 pub fn read_path(scope: Scope) -> Result<Option<String>> {
     Ok(read_value(&scope.open(KEY_READ)?, "Path")?.map(|(s, _)| s))
