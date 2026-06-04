@@ -71,6 +71,7 @@ jdkenv install 21 --distribution temurin  # download + activate Temurin 21
 | `jdkenv setup [--system]` | Registers `PATH`/`JAVA_HOME`. Without a flag: user PATH. `--system`: system PATH (prompts for elevation). |
 | `jdkenv setup --undo [--system]` | Reverts `setup`: removes jdkenv's PATH entries and `JAVA_HOME`. Does **not** delete installed JDKs. |
 | `jdkenv doctor` | Diagnoses your environment and detects another `java.exe` that wins on PATH. |
+| `jdkenv update [--force]` | Self-updates jdkenv to the latest GitHub release (replaces `…\.jdkenv\bin\jdkenv.exe`). Skips the download when already current; `--force` reinstalls anyway. |
 | `jdkenv local <version>` | _(v2, not implemented yet)_ Per-directory version. |
 
 ### Examples
@@ -85,6 +86,7 @@ jdkenv global 17                           # switch the active JDK (persistent)
 jdkenv set 21 | iex                        # use Java 21 in THIS terminal only
 jdkenv current                             # which one is active?
 jdkenv doctor                              # is anything winning over me on PATH?
+jdkenv update                              # upgrade jdkenv itself to the latest
 ```
 
 ### `set` vs `global` — session or persistent

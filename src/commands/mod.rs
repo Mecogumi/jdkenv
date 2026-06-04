@@ -10,3 +10,4 @@ pub mod local;
 pub mod set;
 pub mod setup;
 pub mod uninstall;
+pub mod update;

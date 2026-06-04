@@ -37,10 +37,10 @@ struct PackagesResponse {
     result: Vec<Package>,
 }
 
-/// ureq agent with redirect following (`pkg_download_redirect` is a
-/// 302 to the distributor's CDN) and an identifiable user-agent. Uses rustls (no
-/// OpenSSL) via ureq's default features.
-fn agent() -> ureq::Agent {
+/// ureq agent with redirect following (download links are 302s to a CDN) and an
+/// identifiable user-agent (GitHub's API requires one). Uses rustls (no OpenSSL)
+/// via ureq's default features. Shared by the foojay client and `jdkenv update`.
+pub fn http_agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .redirects(10)
         .user_agent(concat!("jdkenv/", env!("CARGO_PKG_VERSION")))
@@ -55,7 +55,7 @@ fn query_packages(
     arch: Arch,
     latest: bool,
 ) -> Result<Vec<Package>> {
-    let mut req = agent()
+    let mut req = http_agent()
         .get(&format!("{DISCO_BASE}/packages"))
         .query("package_type", "jdk")
         .query("operating_system", "windows")
@@ -198,9 +198,10 @@ pub fn install_package(pkg: &Package, versions_dir: &Path, dest: &Path) -> Resul
 }
 
 /// GET with redirect following, dumping the body to `dest` with a progress
-/// bar if the server provides `Content-Length`.
-fn download_to(url: &str, dest: &Path) -> Result<()> {
-    let resp = match agent().get(url).call() {
+/// bar if the server provides `Content-Length`. Reused by `jdkenv update` to
+/// fetch the release binary.
+pub fn download_to(url: &str, dest: &Path) -> Result<()> {
+    let resp = match http_agent().get(url).call() {
         Ok(r) => r,
         Err(ureq::Error::Status(code, r)) => {
             bail!("the download returned HTTP {code} ({})", r.get_url());

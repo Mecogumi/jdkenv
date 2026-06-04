@@ -34,4 +34,13 @@ impl Arch {
             Arch::Aarch64 => "aarch64",
         }
     }
+
+    /// Suffix of the GitHub release asset for this arch: `jdkenv-<suffix>.exe`
+    /// (matches the names produced by the release workflow and install.ps1).
+    pub fn release_asset(self) -> &'static str {
+        match self {
+            Arch::X64 => "x64",
+            Arch::Aarch64 => "arm64",
+        }
+    }
 }

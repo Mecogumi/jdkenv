@@ -84,6 +84,12 @@ enum Command {
     },
     /// Diagnose the environment (junction, PATH, JAVA_HOME, conflicting java.exe).
     Doctor,
+    /// Update jdkenv itself to the latest GitHub release.
+    Update {
+        /// Reinstall even if already on the latest version.
+        #[arg(long)]
+        force: bool,
+    },
     /// [v2 — not implemented] Pin the version per folder (`.jdkenv-version`).
     Local {
         /// Version for this folder.
@@ -123,6 +129,7 @@ fn run() -> Result<()> {
         Command::Current => commands::current::run(),
         Command::Setup { system, undo } => commands::setup::run(system, undo),
         Command::Doctor => commands::doctor::run(),
+        Command::Update { force } => commands::update::run(force),
         Command::Local { version } => commands::local::run(&version),
     }
 }
