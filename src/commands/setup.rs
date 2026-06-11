@@ -62,6 +62,7 @@ fn apply(layout: &Layout, scope: Scope) -> Result<()> {
     println!("  PATH (prepend) {current_bin}");
     println!("  PATH (prepend) {own_bin}");
     println!("  JAVA_HOME = {java_home}");
+    install_shell_function();
 
     if path_changed || jh_changed {
         // Notify new shells; the ones already open will see `current\bin`
@@ -86,6 +87,7 @@ fn undo_apply(layout: &Layout, scope: Scope) -> Result<()> {
     let path_changed = env_win::remove_from_path(scope, &[&current_bin, &own_bin])?;
     let jh = env_win::clear_java_home_if(scope, &java_home)?;
     let jh_removed = matches!(jh, env_win::JavaHomeUndo::Removed);
+    uninstall_shell_function();
 
     let scope_name = match scope {
         Scope::User => "user",
@@ -131,4 +133,52 @@ fn install_self(layout: &Layout) -> Result<()> {
     std::fs::copy(&exe, &dest)
         .with_context(|| format!("could not copy the executable to {}", dest.display()))?;
     Ok(())
+}
+
+fn install_shell_function() {
+    let script = "$ErrorActionPreference = 'Stop'\n\
+$line = 'Invoke-Expression (& \"$env:USERPROFILE\\.jdkenv\\bin\\jdkenv.exe\" init | Out-String)'\n\
+$p = $PROFILE.CurrentUserAllHosts\n\
+$dir = Split-Path -Parent $p\n\
+if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }\n\
+$has = (Test-Path $p) -and (Select-String -Path $p -SimpleMatch 'jdkenv.exe\" init' -Quiet)\n\
+if (-not $has) { Add-Content -Path $p -Value $line; Write-Output ('added -> ' + $p) } else { Write-Output ('already present -> ' + $p) }\n";
+    run_in_profiles(script, "could not register the `set` wrapper in the PowerShell profile");
+}
+
+fn uninstall_shell_function() {
+    let script = "$ErrorActionPreference = 'Stop'\n\
+$p = $PROFILE.CurrentUserAllHosts\n\
+if (Test-Path $p) { (Get-Content $p) | Where-Object { $_ -notmatch 'jdkenv\\.exe\" init' } | Set-Content -Path $p; Write-Output ('cleaned -> ' + $p) } else { Write-Output 'no profile' }\n";
+    run_in_profiles(script, "could not remove the `set` wrapper from the PowerShell profile");
+}
+
+fn run_in_profiles(script: &str, on_fail: &str) {
+    let mut tmp = std::env::temp_dir();
+    tmp.push("jdkenv-profile.ps1");
+    if std::fs::write(&tmp, script).is_err() {
+        println!("  {on_fail}");
+        return;
+    }
+    let mut any = false;
+    for host in ["pwsh", "powershell"] {
+        let out = std::process::Command::new(host)
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(&tmp)
+            .output();
+        if let Ok(out) = out
+            && out.status.success()
+        {
+            let msg = String::from_utf8_lossy(&out.stdout);
+            let msg = msg.trim();
+            if !msg.is_empty() {
+                println!("  shell wrapper ({host}): {msg}");
+                any = true;
+            }
+        }
+    }
+    let _ = std::fs::remove_file(&tmp);
+    if !any {
+        println!("  {on_fail}");
+    }
 }

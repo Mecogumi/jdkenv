@@ -4,6 +4,7 @@
 pub mod current;
 pub mod doctor;
 pub mod global;
+pub mod init;
 pub mod install;
 pub mod list;
 pub mod local;
