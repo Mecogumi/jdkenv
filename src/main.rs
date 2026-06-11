@@ -84,6 +84,8 @@ enum Command {
     },
     /// Diagnose the environment (junction, PATH, JAVA_HOME, conflicting java.exe).
     Doctor,
+    /// Print the PowerShell wrapper that makes `set` apply without `| iex`.
+    Init,
     /// Update jdkenv itself to the latest GitHub release.
     Update {
         /// Reinstall even if already on the latest version.
@@ -129,6 +131,7 @@ fn run() -> Result<()> {
         Command::Current => commands::current::run(),
         Command::Setup { system, undo } => commands::setup::run(system, undo),
         Command::Doctor => commands::doctor::run(),
+        Command::Init => commands::init::run(),
         Command::Update { force } => commands::update::run(force),
         Command::Local { version } => commands::local::run(&version),
     }

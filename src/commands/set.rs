@@ -12,6 +12,7 @@
 //! `bin` to the session `PATH` and points `JAVA_HOME` at it — gone when the
 //! terminal closes.
 
+use std::io::IsTerminal;
 use std::path::Path;
 
 use anyhow::{bail, Result};
@@ -50,6 +51,24 @@ pub fn run(version: &str, distribution: Option<&str>, cmd: bool) -> Result<()> {
 
     let java_home = jdk.path.clone();
     let bin = java_home.join("bin");
+
+    if std::io::stdout().is_terminal() {
+        let pipe = if cmd {
+            format!(
+                "jdkenv set {version} --cmd > \"%TEMP%\\jdkset.bat\" & call \"%TEMP%\\jdkset.bat\""
+            )
+        } else {
+            format!("jdkenv set {version} | iex")
+        };
+        eprintln!(
+            "{} matched, but nothing changed yet: `set` has to be eval'd by your shell.",
+            jdk.dir_name
+        );
+        eprintln!("Run it so the current terminal applies it:");
+        eprintln!("  {pipe}");
+        return Ok(());
+    }
+
     let new_path = session_path_with(&layout, &bin);
     let jh = java_home.to_string_lossy();
 
